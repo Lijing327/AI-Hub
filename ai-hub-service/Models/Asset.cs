@@ -4,10 +4,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace ai_hub_service.Models;
 
 /// <summary>
-/// 入库切片表实体（kb_chunk）
+/// 附件表实体（kb_asset）
 /// </summary>
-[Table("kb_chunk")]
-public class KnowledgeChunk
+[Table("kb_asset")]
+public class Asset
 {
     /// <summary>
     /// 主键ID
@@ -31,32 +31,40 @@ public class KnowledgeChunk
     public int ArticleId { get; set; }
 
     /// <summary>
-    /// 块索引
+    /// 资产类型：image/video/pdf/other
     /// </summary>
     [Required]
-    [Column("chunk_index")]
-    public int ChunkIndex { get; set; }
+    [MaxLength(50)]
+    [Column("asset_type")]
+    public string AssetType { get; set; } = string.Empty;
 
     /// <summary>
-    /// 块文本
+    /// 文件名
     /// </summary>
     [Required]
-    [Column("chunk_text")]
-    public string ChunkText { get; set; } = string.Empty;
+    [MaxLength(500)]
+    [Column("file_name")]
+    public string FileName { get; set; } = string.Empty;
 
     /// <summary>
-    /// 用于去重（SHA256 hash）
+    /// URL（OSS/本地路径）
     /// </summary>
-    [MaxLength(64)]
-    [Column("hash")]
-    public string? Hash { get; set; }
+    [Required]
+    [MaxLength(1000)]
+    [Column("url")]
+    public string Url { get; set; } = string.Empty;
 
     /// <summary>
-    /// 来自 question/cause/solution 哪部分
+    /// 文件大小（字节）
     /// </summary>
-    [MaxLength(100)]
-    [Column("source_fields")]
-    public string? SourceFields { get; set; }
+    [Column("size")]
+    public long Size { get; set; }
+
+    /// <summary>
+    /// 视频时长（秒，可选）
+    /// </summary>
+    [Column("duration")]
+    public int? Duration { get; set; }
 
     /// <summary>
     /// 创建时间
@@ -64,6 +72,12 @@ public class KnowledgeChunk
     [Required]
     [Column("created_at")]
     public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    /// <summary>
+    /// 删除时间（软删除标记，NULL表示未删除）
+    /// </summary>
+    [Column("deleted_at")]
+    public DateTime? DeletedAt { get; set; }
 
     // 导航属性
     /// <summary>

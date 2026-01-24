@@ -4,10 +4,10 @@ using System.ComponentModel.DataAnnotations.Schema;
 namespace ai_hub_service.Models;
 
 /// <summary>
-/// 知识条目实体
+/// 知识主表实体（kb_article）
 /// </summary>
-[Table("kb_item")]
-public class KnowledgeItem
+[Table("kb_article")]
+public class KnowledgeArticle
 {
     /// <summary>
     /// 主键ID
@@ -17,7 +17,14 @@ public class KnowledgeItem
     public int Id { get; set; }
 
     /// <summary>
-    /// 标题
+    /// 租户ID
+    /// </summary>
+    [MaxLength(50)]
+    [Column("tenant_id")]
+    public string? TenantId { get; set; }
+
+    /// <summary>
+    /// 知识标题
     /// </summary>
     [Required]
     [MaxLength(500)]
@@ -25,25 +32,25 @@ public class KnowledgeItem
     public string Title { get; set; } = string.Empty;
 
     /// <summary>
-    /// 问题描述
+    /// 用户问题/现象描述：尽量贴近用户口语
     /// </summary>
     [Column("question_text")]
     public string? QuestionText { get; set; }
 
     /// <summary>
-    /// 原因分析
+    /// 原因分析：可写"可能原因1/2/3"
     /// </summary>
     [Column("cause_text")]
     public string? CauseText { get; set; }
 
     /// <summary>
-    /// 解决方案
+    /// 解决步骤：结构化分步更好
     /// </summary>
     [Column("solution_text")]
     public string? SolutionText { get; set; }
 
     /// <summary>
-    /// 适用范围（JSON格式）
+    /// 适用范围：机型/版本/模块/场景（JSON格式）
     /// </summary>
     [Column("scope_json")]
     public string? ScopeJson { get; set; }
@@ -64,17 +71,10 @@ public class KnowledgeItem
     public string Status { get; set; } = "draft";
 
     /// <summary>
-    /// 版本号
+    /// 版本号（整数）
     /// </summary>
     [Column("version")]
     public int Version { get; set; } = 1;
-
-    /// <summary>
-    /// 租户ID
-    /// </summary>
-    [MaxLength(50)]
-    [Column("tenant_id")]
-    public string? TenantId { get; set; }
 
     /// <summary>
     /// 创建人
@@ -102,11 +102,17 @@ public class KnowledgeItem
     [Column("published_at")]
     public DateTime? PublishedAt { get; set; }
 
+    /// <summary>
+    /// 删除时间（软删除标记，NULL表示未删除）
+    /// </summary>
+    [Column("deleted_at")]
+    public DateTime? DeletedAt { get; set; }
+
     // 导航属性
     /// <summary>
     /// 附件列表
     /// </summary>
-    public virtual ICollection<Attachment> Attachments { get; set; } = new List<Attachment>();
+    public virtual ICollection<Asset> Assets { get; set; } = new List<Asset>();
 
     /// <summary>
     /// 知识块列表

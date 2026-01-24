@@ -1,6 +1,7 @@
-// 知识条目类型定义
+// 知识条目类型定义（对应后端 KnowledgeArticleDto）
 export interface KnowledgeItemDto {
   id: number
+  tenantId?: string
   title: string
   questionText?: string
   causeText?: string
@@ -9,12 +10,11 @@ export interface KnowledgeItemDto {
   tags?: string
   status: string
   version: number
-  tenantId?: string
   createdBy?: string
   createdAt: string
   updatedAt?: string
   publishedAt?: string
-  attachments?: AttachmentDto[]
+  assets?: AttachmentDto[] // 保持前端字段名为 attachments，后端返回 assets
 }
 
 export interface CreateKnowledgeItemDto {
@@ -54,12 +54,19 @@ export interface PagedResultDto<T> {
   totalPages: number
 }
 
+// 附件类型定义（对应后端 AssetDto，保持API兼容性）
 export interface AttachmentDto {
   id: number
-  knowledgeItemId: number
+  tenantId?: string
+  articleId: number // 后端字段，前端仍使用 knowledgeItemId 映射
+  knowledgeItemId?: number // 前端兼容字段，映射自 articleId
+  assetType: string // 后端字段：image/video/pdf/other
+  fileType?: string // 前端兼容字段，映射自 assetType
   fileName: string
-  fileUrl: string
-  fileType: string
-  fileSize: number
+  url: string // 后端字段（OSS/本地路径）
+  fileUrl?: string // 前端兼容字段，映射自 url
+  size: number // 后端字段
+  fileSize?: number // 前端兼容字段，映射自 size
+  duration?: number // 视频时长（秒，可选）
   createdAt: string
 }

@@ -43,7 +43,15 @@
             {{ item.tags || '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="适用范围" :span="2">
-            <pre v-if="item.scopeJson">{{ formatJson(item.scopeJson) }}</pre>
+            <div v-if="item.scopeJson" class="scope-display">
+              <el-tag
+                v-for="(value, key) in parseScopeJson(item.scopeJson)"
+                :key="key"
+                style="margin-right: 8px; margin-bottom: 5px"
+              >
+                {{ key }}: {{ value }}
+              </el-tag>
+            </div>
             <span v-else>-</span>
           </el-descriptions-item>
         </el-descriptions>
@@ -75,7 +83,7 @@
               :key="att.id"
               class="attachment-item"
             >
-              <el-link :href="att.fileUrl" target="_blank" type="primary">
+              <el-link :href="getFileUrl(att.fileUrl)" target="_blank" type="primary">
                 <el-icon><Document /></el-icon>
                 {{ att.fileName }}
               </el-link>
@@ -85,11 +93,22 @@
               <!-- 图片预览 -->
               <div v-if="att.fileType === 'image'" class="image-preview">
                 <el-image
-                  :src="att.fileUrl"
-                  :preview-src-list="[att.fileUrl]"
+                  :src="getFileUrl(att.fileUrl)"
+                  :preview-src-list="getImagePreviewList(item.attachments)"
                   fit="cover"
                   style="width: 200px; height: 200px; margin-top: 10px;"
-                />
+                  :lazy="true"
+                  loading="lazy"
+                  @error="handleImageError"
+                >
+                  <template #error>
+                    <div class="image-error">
+                      <el-icon><Picture /></el-icon>
+                      <span>图片加载失败</span>
+                      <div style="font-size: 12px; margin-top: 4px;">{{ att.fileUrl }}</div>
+                    </div>
+                  </template>
+                </el-image>
               </div>
             </div>
           </div>
@@ -101,12 +120,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, computed } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document } from '@element-plus/icons-vue'
+import { Document, Picture } from '@element-plus/icons-vue'
 import { knowledgeApi } from '../api/knowledge'
-import type { KnowledgeItemDto } from '../types/knowledge'
+import type { KnowledgeItemDto, AttachmentDto } from '../types/knowledge'
 
 const router = useRouter()
 const route = useRoute()
@@ -190,10 +209,47 @@ const formatJson = (jsonStr: string) => {
   }
 }
 
+// 解析适用范围 JSON 为对象
+const parseScopeJson = (jsonStr: string | null | undefined): Record<string, string> => {
+  if (!jsonStr || jsonStr.trim() === '') {
+    return {}
+  }
+  try {
+    return JSON.parse(jsonStr)
+  } catch {
+    return {}
+  }
+}
+
 const formatFileSize = (bytes: number) => {
   if (bytes < 1024) return bytes + ' B'
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB'
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
+}
+
+// 处理文件URL，如果是绝对路径且指向localhost:5000，转换为相对路径以使用代理
+const getFileUrl = (fileUrl: string): string => {
+  if (!fileUrl) return ''
+  // 如果是开发环境且URL指向localhost:5000，转换为相对路径使用代理
+  if (import.meta.env.DEV && fileUrl.startsWith('http://localhost:5000/')) {
+    return fileUrl.replace('http://localhost:5000', '')
+  }
+  // 生产环境或已经是相对路径，直接返回
+  return fileUrl
+}
+
+// 获取所有图片的预览列表
+const getImagePreviewList = (attachments: AttachmentDto[] | undefined): string[] => {
+  if (!attachments) return []
+  return attachments
+    .filter(att => att.fileType === 'image')
+    .map(att => getFileUrl(att.fileUrl))
+}
+
+// 图片加载错误处理
+const handleImageError = (error: any) => {
+  console.error('图片加载失败:', error)
+  // 可以在这里添加重试逻辑或显示默认图片
 }
 
 onMounted(() => {
@@ -257,6 +313,22 @@ onMounted(() => {
   margin-top: 10px;
 }
 
+.image-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  color: #909399;
+  font-size: 14px;
+}
+
+.image-error .el-icon {
+  font-size: 48px;
+  margin-bottom: 8px;
+}
+
 .no-attachments {
   color: #909399;
   font-style: italic;
@@ -268,5 +340,11 @@ pre {
   background-color: #f5f7fa;
   border-radius: 4px;
   overflow-x: auto;
+}
+
+.scope-display {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
 }
 </style>

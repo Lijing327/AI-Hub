@@ -5,41 +5,41 @@ using Microsoft.AspNetCore.Mvc;
 namespace ai_hub_service.Controllers;
 
 /// <summary>
-/// 知识条目控制器
+/// 知识条目控制器（保持API路由兼容性）
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 public class KnowledgeItemsController : ControllerBase
 {
-    private readonly IKnowledgeItemService _knowledgeItemService;
+    private readonly IKnowledgeArticleService _knowledgeArticleService;
 
-    public KnowledgeItemsController(IKnowledgeItemService knowledgeItemService)
+    public KnowledgeItemsController(IKnowledgeArticleService knowledgeArticleService)
     {
-        _knowledgeItemService = knowledgeItemService;
+        _knowledgeArticleService = knowledgeArticleService;
     }
 
     /// <summary>
     /// 根据ID获取知识条目
     /// </summary>
     [HttpGet("{id}")]
-    public async Task<ActionResult<KnowledgeItemDto>> GetById(int id)
+    public async Task<ActionResult<KnowledgeArticleDto>> GetById(int id)
     {
-        var item = await _knowledgeItemService.GetByIdAsync(id);
-        if (item == null)
+        var article = await _knowledgeArticleService.GetByIdAsync(id);
+        if (article == null)
             return NotFound();
 
-        return Ok(item);
+        return Ok(article);
     }
 
     /// <summary>
     /// 搜索知识条目
     /// </summary>
     [HttpGet("search")]
-    public async Task<ActionResult<PagedResultDto<KnowledgeItemDto>>> Search([FromQuery] SearchKnowledgeItemDto searchDto)
+    public async Task<ActionResult<PagedResultDto<KnowledgeArticleDto>>> Search([FromQuery] SearchKnowledgeArticleDto searchDto)
     {
         try
         {
-            var result = await _knowledgeItemService.SearchAsync(searchDto);
+            var result = await _knowledgeArticleService.SearchAsync(searchDto);
             return Ok(result);
         }
         catch (Exception ex)
@@ -57,36 +57,49 @@ public class KnowledgeItemsController : ControllerBase
     /// 创建知识条目
     /// </summary>
     [HttpPost]
-    public async Task<ActionResult<KnowledgeItemDto>> Create([FromBody] CreateKnowledgeItemDto createDto)
+    public async Task<ActionResult<KnowledgeArticleDto>> Create([FromBody] CreateKnowledgeArticleDto createDto)
     {
-        var item = await _knowledgeItemService.CreateAsync(createDto);
-        return CreatedAtAction(nameof(GetById), new { id = item.Id }, item);
+        var article = await _knowledgeArticleService.CreateAsync(createDto);
+        return CreatedAtAction(nameof(GetById), new { id = article.Id }, article);
     }
 
     /// <summary>
     /// 更新知识条目
     /// </summary>
     [HttpPut("{id}")]
-    public async Task<ActionResult<KnowledgeItemDto>> Update(int id, [FromBody] UpdateKnowledgeItemDto updateDto)
+    public async Task<ActionResult<KnowledgeArticleDto>> Update(int id, [FromBody] UpdateKnowledgeArticleDto updateDto)
     {
-        var item = await _knowledgeItemService.UpdateAsync(id, updateDto);
-        if (item == null)
+        var article = await _knowledgeArticleService.UpdateAsync(id, updateDto);
+        if (article == null)
             return NotFound();
 
-        return Ok(item);
+        return Ok(article);
     }
 
     /// <summary>
-    /// 删除知识条目
+    /// 删除知识条目（软删除）
     /// </summary>
     [HttpDelete("{id}")]
     public async Task<ActionResult> Delete(int id)
     {
-        var success = await _knowledgeItemService.DeleteAsync(id);
+        var success = await _knowledgeArticleService.DeleteAsync(id);
         if (!success)
             return NotFound();
 
-        return NoContent();
+        return Ok(new { message = "删除成功" });
+    }
+
+    /// <summary>
+    /// 恢复已删除的知识条目
+    /// </summary>
+    [HttpPost("{id}/restore")]
+    public async Task<ActionResult> Restore(int id)
+    {
+        var success = await _knowledgeArticleService.RestoreAsync(id);
+        if (!success)
+            return NotFound();
+
+        return Ok(new { message = "恢复成功" });
     }
 
     /// <summary>
@@ -95,7 +108,7 @@ public class KnowledgeItemsController : ControllerBase
     [HttpPost("{id}/publish")]
     public async Task<ActionResult> Publish(int id)
     {
-        var success = await _knowledgeItemService.PublishAsync(id);
+        var success = await _knowledgeArticleService.PublishAsync(id);
         if (!success)
             return NotFound();
 
