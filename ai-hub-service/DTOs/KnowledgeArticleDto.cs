@@ -28,7 +28,7 @@ public class KnowledgeArticleDto
 /// </summary>
 public class CreateKnowledgeArticleDto
 {
-    public string? TenantId { get; set; }
+    // TenantId 已移除，必须从请求头 X-Tenant-Id 获取
     public string Title { get; set; } = string.Empty;
     public string? QuestionText { get; set; }
     public string? CauseText { get; set; }

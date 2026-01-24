@@ -24,10 +24,10 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     /// <summary>
     /// 根据ID获取知识条目
     /// </summary>
-    public async Task<KnowledgeArticleDto?> GetByIdAsync(int id)
+    public async Task<KnowledgeArticleDto?> GetByIdAsync(int id, string tenantId)
     {
         var article = await _context.KnowledgeArticles
-            .Where(a => a.Id == id && a.DeletedAt == null) // 只查询未删除的记录
+            .Where(a => a.Id == id && a.TenantId == tenantId && a.DeletedAt == null) // 只查询未删除的记录
             .FirstOrDefaultAsync();
 
         if (article == null) return null;
@@ -47,7 +47,7 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     /// <summary>
     /// 搜索知识条目
     /// </summary>
-    public async Task<PagedResultDto<KnowledgeArticleDto>> SearchAsync(SearchKnowledgeArticleDto searchDto)
+    public async Task<PagedResultDto<KnowledgeArticleDto>> SearchAsync(SearchKnowledgeArticleDto searchDto, string tenantId)
     {
         try
         {
@@ -60,7 +60,7 @@ public class KnowledgeArticleService : IKnowledgeArticleService
                 searchDto.PageSize = 100; // 限制最大页面大小
 
             var query = _context.KnowledgeArticles
-                .Where(a => a.DeletedAt == null) // 只查询未删除的记录
+                .Where(a => a.TenantId == tenantId && a.DeletedAt == null) // 只查询未删除的记录
                 .AsQueryable();
 
             // 关键词搜索（title/question/solution）
@@ -129,11 +129,11 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     /// <summary>
     /// 创建知识条目
     /// </summary>
-    public async Task<KnowledgeArticleDto> CreateAsync(CreateKnowledgeArticleDto createDto)
+    public async Task<KnowledgeArticleDto> CreateAsync(CreateKnowledgeArticleDto createDto, string tenantId)
     {
         var article = new KnowledgeArticle
         {
-            TenantId = createDto.TenantId,
+            TenantId = tenantId, // 从请求头获取，不允许从DTO传入
             Title = createDto.Title,
             QuestionText = createDto.QuestionText,
             CauseText = createDto.CauseText,
@@ -155,10 +155,10 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     /// <summary>
     /// 更新知识条目
     /// </summary>
-    public async Task<KnowledgeArticleDto?> UpdateAsync(int id, UpdateKnowledgeArticleDto updateDto)
+    public async Task<KnowledgeArticleDto?> UpdateAsync(int id, UpdateKnowledgeArticleDto updateDto, string tenantId)
     {
         var article = await _context.KnowledgeArticles
-            .Where(a => a.Id == id && a.DeletedAt == null) // 只查询未删除的记录
+            .Where(a => a.Id == id && a.TenantId == tenantId && a.DeletedAt == null) // 只查询未删除的记录
             .FirstOrDefaultAsync();
         
         if (article == null) return null;
@@ -182,10 +182,10 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     /// <summary>
     /// 删除知识条目（软删除）
     /// </summary>
-    public async Task<bool> DeleteAsync(int id)
+    public async Task<bool> DeleteAsync(int id, string tenantId)
     {
         var article = await _context.KnowledgeArticles
-            .Where(a => a.Id == id && a.DeletedAt == null)
+            .Where(a => a.Id == id && a.TenantId == tenantId && a.DeletedAt == null)
             .FirstOrDefaultAsync();
         
         if (article == null) return false;
@@ -209,10 +209,10 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     /// <summary>
     /// 恢复已删除的知识条目
     /// </summary>
-    public async Task<bool> RestoreAsync(int id)
+    public async Task<bool> RestoreAsync(int id, string tenantId)
     {
         var article = await _context.KnowledgeArticles
-            .Where(a => a.Id == id && a.DeletedAt != null)
+            .Where(a => a.Id == id && a.TenantId == tenantId && a.DeletedAt != null)
             .FirstOrDefaultAsync();
         
         if (article == null) return false;
@@ -236,13 +236,13 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     /// <summary>
     /// 发布知识条目
     /// </summary>
-    public async Task<bool> PublishAsync(int id)
+    public async Task<bool> PublishAsync(int id, string tenantId)
     {
         var article = await _context.KnowledgeArticles
             .Include(a => a.Chunks)
-            .Where(a => a.Id == id && a.DeletedAt == null) // 只查询未删除的记录
+            .Where(a => a.Id == id && a.TenantId == tenantId && a.DeletedAt == null) // 只查询未删除的记录
             .FirstOrDefaultAsync();
-
+        
         if (article == null) return false;
 
         // 更新状态和发布时间
@@ -255,7 +255,29 @@ public class KnowledgeArticleService : IKnowledgeArticleService
 
         // 生成新的chunks（带hash和source_fields）
         var chunks = GenerateChunks(article);
-        _context.KnowledgeChunks.AddRange(chunks);
+
+        // 去重：仅同文章内去重（保留每个hash第一次出现的chunk）
+        // 策略：同文章内chunk唯一，允许不同文章有相同chunk
+        var seenHashes = new HashSet<string>();
+        var uniqueChunks = new List<KnowledgeChunk>();
+
+        foreach (var chunk in chunks)
+        {
+            if (chunk.Hash == null)
+            {
+                // hash 为 null 的 chunk 直接添加（理论上不会发生）
+                uniqueChunks.Add(chunk);
+            }
+            else if (!seenHashes.Contains(chunk.Hash))
+            {
+                // 第一次出现的 hash，添加并记录
+                seenHashes.Add(chunk.Hash);
+                uniqueChunks.Add(chunk);
+            }
+            // 如果 hash 已存在，跳过（同文章内去重）
+        }
+
+        _context.KnowledgeChunks.AddRange(uniqueChunks);
 
         await _context.SaveChangesAsync();
 
@@ -266,53 +288,142 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     }
 
     /// <summary>
-    /// 生成知识块（将question/cause/solution合并后切分，并标记来源）
+    /// 生成知识块（按标准顺序合并：知识ID、版本、标题、标签、适用范围、问题描述、原因分析、解决步骤）
     /// </summary>
     private List<KnowledgeChunk> GenerateChunks(KnowledgeArticle article)
     {
         var chunks = new List<KnowledgeChunk>();
         int chunkIndex = 0;
 
-        // 分别处理每个字段，标记来源
-        var sources = new[]
+        // 按标准顺序构建完整文本
+        var fullTextParts = new List<string>();
+
+        // 0. 知识ID和版本（最前面，便于溯源）
+        fullTextParts.Add($"【知识ID】\n{article.Id}");
+        fullTextParts.Add($"【版本】\n{article.Version}");
+
+        // 1. 标题
+        if (!string.IsNullOrWhiteSpace(article.Title))
         {
-            new { Text = article.QuestionText, Source = "question" },
-            new { Text = article.CauseText, Source = "cause" },
-            new { Text = article.SolutionText, Source = "solution" }
-        };
+            fullTextParts.Add($"【标题】\n{article.Title}");
+        }
 
-        foreach (var source in sources)
+        // 2. 标签
+        if (!string.IsNullOrWhiteSpace(article.Tags))
         {
-            if (string.IsNullOrWhiteSpace(source.Text))
-                continue;
+            fullTextParts.Add($"【标签】\n{article.Tags}");
+        }
 
-            // 按段落切分
-            var paragraphs = source.Text.Split(new[] { "\n\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
-            const int maxChunkSize = 1000;
-            var currentChunk = new List<string>();
-            var currentSize = 0;
-
-            foreach (var paragraph in paragraphs)
+        // 3. 适用范围
+        if (!string.IsNullOrWhiteSpace(article.ScopeJson))
+        {
+            try
             {
-                if (currentSize + paragraph.Length > maxChunkSize && currentChunk.Any())
+                // 尝试格式化 JSON 为可读文本
+                var scopeObj = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, string>>(article.ScopeJson);
+                if (scopeObj != null && scopeObj.Any())
                 {
-                    // 保存当前chunk
-                    var chunkText = string.Join("\n", currentChunk);
-                    chunks.Add(CreateChunk(article, chunkText, chunkIndex++, source.Source));
-                    currentChunk.Clear();
-                    currentSize = 0;
+                    var scopeText = string.Join("、", scopeObj.Select(kv => $"{kv.Key}: {kv.Value}"));
+                    fullTextParts.Add($"【适用范围】\n{scopeText}");
                 }
-
-                currentChunk.Add(paragraph);
-                currentSize += paragraph.Length;
+                else
+                {
+                    fullTextParts.Add($"【适用范围】\n{article.ScopeJson}");
+                }
             }
+            catch
+            {
+                // JSON 解析失败，直接使用原始文本
+                fullTextParts.Add($"【适用范围】\n{article.ScopeJson}");
+            }
+        }
 
-            // 保存最后一个chunk
-            if (currentChunk.Any())
+        // 4. 问题描述
+        if (!string.IsNullOrWhiteSpace(article.QuestionText))
+        {
+            fullTextParts.Add($"【问题描述】\n{article.QuestionText}");
+        }
+
+        // 5. 原因分析
+        if (!string.IsNullOrWhiteSpace(article.CauseText))
+        {
+            fullTextParts.Add($"【原因分析】\n{article.CauseText}");
+        }
+
+        // 6. 解决步骤
+        if (!string.IsNullOrWhiteSpace(article.SolutionText))
+        {
+            fullTextParts.Add($"【解决步骤】\n{article.SolutionText}");
+        }
+
+        // 合并为完整文本
+        var fullText = string.Join("\n\n", fullTextParts);
+
+        if (string.IsNullOrWhiteSpace(fullText))
+        {
+            return chunks; // 如果没有内容，返回空列表
+        }
+
+        // 按段落切分（保持结构）
+        var paragraphs = fullText.Split(new[] { "\n\n", "\n" }, StringSplitOptions.RemoveEmptyEntries);
+        const int maxChunkSize = 1000;
+        var currentChunk = new List<string>();
+        var currentSize = 0;
+        string? currentSourceField = null; // 当前 chunk 的主要来源字段
+
+        foreach (var paragraph in paragraphs)
+        {
+            // 判断段落来源
+            string? sourceField = null;
+            if (paragraph.Contains("【知识ID】"))
+                sourceField = "metadata";
+            else if (paragraph.Contains("【版本】"))
+                sourceField = "metadata";
+            else if (paragraph.Contains("【标题】"))
+                sourceField = "title";
+            else if (paragraph.Contains("【标签】"))
+                sourceField = "tags";
+            else if (paragraph.Contains("【适用范围】"))
+                sourceField = "scope";
+            else if (paragraph.Contains("【问题描述】"))
+                sourceField = "question";
+            else if (paragraph.Contains("【原因分析】"))
+                sourceField = "cause";
+            else if (paragraph.Contains("【解决步骤】"))
+                sourceField = "solution";
+
+            // 如果遇到新的来源字段，且当前 chunk 不为空，先保存当前 chunk
+            if (sourceField != null && currentSourceField != null && currentChunk.Any() && sourceField != currentSourceField)
             {
                 var chunkText = string.Join("\n", currentChunk);
-                chunks.Add(CreateChunk(article, chunkText, chunkIndex++, source.Source));
+                chunks.Add(CreateChunk(article, chunkText, chunkIndex++, currentSourceField));
+                currentChunk.Clear();
+                currentSize = 0;
             }
+
+            // 如果当前 chunk 加上新段落会超过大小限制，先保存当前 chunk
+            if (currentSize + paragraph.Length > maxChunkSize && currentChunk.Any())
+            {
+                var chunkText = string.Join("\n", currentChunk);
+                chunks.Add(CreateChunk(article, chunkText, chunkIndex++, currentSourceField ?? "mixed"));
+                currentChunk.Clear();
+                currentSize = 0;
+                currentSourceField = null;
+            }
+
+            currentChunk.Add(paragraph);
+            currentSize += paragraph.Length;
+            if (sourceField != null)
+            {
+                currentSourceField = sourceField;
+            }
+        }
+
+        // 保存最后一个 chunk
+        if (currentChunk.Any())
+        {
+            var chunkText = string.Join("\n", currentChunk);
+            chunks.Add(CreateChunk(article, chunkText, chunkIndex++, currentSourceField ?? "mixed"));
         }
 
         return chunks;

@@ -1,5 +1,6 @@
 using ai_hub_service.Data;
 using ai_hub_service.Services;
+using ai_hub_service.Middleware;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 
@@ -67,6 +68,9 @@ if (app.Environment.IsDevelopment() || enableSwagger)
 }
 
 app.UseCors("AllowVueApp");
+
+// 添加租户隔离中间件（必须在路由之前）
+app.UseMiddleware<TenantMiddleware>();
 
 // 配置静态文件服务（用于提供上传的文件访问）
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads");

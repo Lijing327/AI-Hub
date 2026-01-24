@@ -123,6 +123,16 @@ IF EXISTS (SELECT * FROM sys.tables WHERE name = 'kb_item')
    AND EXISTS (SELECT * FROM sys.tables WHERE name = 'kb_article')
    AND NOT EXISTS (SELECT * FROM kb_article)
 BEGIN
+    -- 确保 kb_article 表有 deleted_at 字段
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('kb_article') AND name = 'deleted_at')
+    BEGIN
+        ALTER TABLE kb_article ADD deleted_at DATETIME;
+        IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_deleted_at' AND object_id = OBJECT_ID('kb_article'))
+        BEGIN
+            CREATE INDEX idx_deleted_at ON kb_article(deleted_at);
+        END
+    END
+    
     INSERT INTO kb_article (
         tenant_id, title, question_text, cause_text, solution_text,
         scope_json, tags, status, version, created_by,
@@ -144,6 +154,16 @@ IF EXISTS (SELECT * FROM sys.tables WHERE name = 'kb_attachment')
    AND EXISTS (SELECT * FROM sys.tables WHERE name = 'kb_article')
    AND NOT EXISTS (SELECT * FROM kb_asset)
 BEGIN
+    -- 确保 kb_asset 表有 deleted_at 字段
+    IF NOT EXISTS (SELECT * FROM sys.columns WHERE object_id = OBJECT_ID('kb_asset') AND name = 'deleted_at')
+    BEGIN
+        ALTER TABLE kb_asset ADD deleted_at DATETIME;
+        IF NOT EXISTS (SELECT * FROM sys.indexes WHERE name = 'idx_deleted_at' AND object_id = OBJECT_ID('kb_asset'))
+        BEGIN
+            CREATE INDEX idx_deleted_at ON kb_asset(deleted_at);
+        END
+    END
+    
     -- 创建临时映射表
     DECLARE @ItemToArticleMap TABLE (old_id INT, new_id INT);
     

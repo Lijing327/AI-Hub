@@ -27,12 +27,14 @@ public class AssetService : IAssetService
     /// <summary>
     /// 上传附件
     /// </summary>
-    public async Task<AssetDto> UploadAsync(int articleId, IFormFile file)
+    public async Task<AssetDto> UploadAsync(int articleId, IFormFile file, string tenantId)
     {
-        // 验证知识条目是否存在
-        var article = await _context.KnowledgeArticles.FindAsync(articleId);
+        // 验证知识条目是否存在且属于当前租户
+        var article = await _context.KnowledgeArticles
+            .Where(a => a.Id == articleId && a.TenantId == tenantId && a.DeletedAt == null)
+            .FirstOrDefaultAsync();
         if (article == null)
-            throw new ArgumentException($"知识条目 {articleId} 不存在");
+            throw new UnauthorizedAccessException($"知识条目 {articleId} 不存在或不属于当前租户");
 
         // 验证文件类型
         var allowedTypes = new[] { "image", "video", "pdf", "other" };
@@ -70,7 +72,7 @@ public class AssetService : IAssetService
         // 保存到数据库
         var asset = new Asset
         {
-            TenantId = article.TenantId,
+            TenantId = tenantId, // 使用传入的 tenantId，确保一致性
             ArticleId = articleId,
             AssetType = assetType,
             FileName = file.FileName,
@@ -101,10 +103,10 @@ public class AssetService : IAssetService
     /// <summary>
     /// 删除附件（软删除）
     /// </summary>
-    public async Task<bool> DeleteAsync(int assetId)
+    public async Task<bool> DeleteAsync(int assetId, string tenantId)
     {
         var asset = await _context.Assets
-            .Where(a => a.Id == assetId && a.DeletedAt == null)
+            .Where(a => a.Id == assetId && a.TenantId == tenantId && a.DeletedAt == null)
             .FirstOrDefaultAsync();
         
         if (asset == null) return false;
@@ -119,10 +121,10 @@ public class AssetService : IAssetService
     /// <summary>
     /// 恢复已删除的附件
     /// </summary>
-    public async Task<bool> RestoreAsync(int assetId)
+    public async Task<bool> RestoreAsync(int assetId, string tenantId)
     {
         var asset = await _context.Assets
-            .Where(a => a.Id == assetId && a.DeletedAt != null)
+            .Where(a => a.Id == assetId && a.TenantId == tenantId && a.DeletedAt != null)
             .FirstOrDefaultAsync();
         
         if (asset == null) return false;
@@ -137,10 +139,16 @@ public class AssetService : IAssetService
     /// <summary>
     /// 根据知识条目ID获取附件列表
     /// </summary>
-    public async Task<List<AssetDto>> GetByArticleIdAsync(int articleId)
+    public async Task<List<AssetDto>> GetByArticleIdAsync(int articleId, string tenantId)
     {
+        // 先验证 article 属于当前租户
+        var articleExists = await _context.KnowledgeArticles
+            .AnyAsync(a => a.Id == articleId && a.TenantId == tenantId && a.DeletedAt == null);
+        if (!articleExists)
+            return new List<AssetDto>();
+
         var assets = await _context.Assets
-            .Where(a => a.ArticleId == articleId && a.DeletedAt == null) // 只查询未删除的附件
+            .Where(a => a.ArticleId == articleId && a.TenantId == tenantId && a.DeletedAt == null) // 只查询未删除的附件
             .OrderBy(a => a.CreatedAt)
             .ToListAsync();
 

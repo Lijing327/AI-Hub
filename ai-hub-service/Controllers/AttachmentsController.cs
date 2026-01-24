@@ -9,7 +9,7 @@ namespace ai_hub_service.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class AttachmentsController : ControllerBase
+public class AttachmentsController : BaseController
 {
     private readonly IAssetService _assetService;
 
@@ -29,8 +29,9 @@ public class AttachmentsController : ControllerBase
 
         try
         {
+            var tenantId = GetTenantId();
             // 保持API兼容性：knowledgeItemId 实际对应 articleId
-            var asset = await _assetService.UploadAsync(knowledgeItemId, file);
+            var asset = await _assetService.UploadAsync(knowledgeItemId, file, tenantId);
             return Ok(asset);
         }
         catch (Exception ex)
@@ -45,7 +46,8 @@ public class AttachmentsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<ActionResult> Delete(int id)
     {
-        var success = await _assetService.DeleteAsync(id);
+        var tenantId = GetTenantId();
+        var success = await _assetService.DeleteAsync(id, tenantId);
         if (!success)
             return NotFound();
 
@@ -58,7 +60,8 @@ public class AttachmentsController : ControllerBase
     [HttpPost("{id}/restore")]
     public async Task<ActionResult> Restore(int id)
     {
-        var success = await _assetService.RestoreAsync(id);
+        var tenantId = GetTenantId();
+        var success = await _assetService.RestoreAsync(id, tenantId);
         if (!success)
             return NotFound();
 
@@ -71,8 +74,9 @@ public class AttachmentsController : ControllerBase
     [HttpGet("knowledge-item/{knowledgeItemId}")]
     public async Task<ActionResult<List<AssetDto>>> GetByKnowledgeItemId(int knowledgeItemId)
     {
+        var tenantId = GetTenantId();
         // 保持API兼容性：knowledgeItemId 实际对应 articleId
-        var assets = await _assetService.GetByArticleIdAsync(knowledgeItemId);
+        var assets = await _assetService.GetByArticleIdAsync(knowledgeItemId, tenantId);
         return Ok(assets);
     }
 }

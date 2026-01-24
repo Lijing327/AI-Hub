@@ -9,7 +9,7 @@ namespace ai_hub_service.Controllers;
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
-public class KnowledgeItemsController : ControllerBase
+public class KnowledgeItemsController : BaseController
 {
     private readonly IKnowledgeArticleService _knowledgeArticleService;
 
@@ -24,7 +24,8 @@ public class KnowledgeItemsController : ControllerBase
     [HttpGet("{id}")]
     public async Task<ActionResult<KnowledgeArticleDto>> GetById(int id)
     {
-        var article = await _knowledgeArticleService.GetByIdAsync(id);
+        var tenantId = GetTenantId();
+        var article = await _knowledgeArticleService.GetByIdAsync(id, tenantId);
         if (article == null)
             return NotFound();
 
@@ -39,7 +40,8 @@ public class KnowledgeItemsController : ControllerBase
     {
         try
         {
-            var result = await _knowledgeArticleService.SearchAsync(searchDto);
+            var tenantId = GetTenantId();
+            var result = await _knowledgeArticleService.SearchAsync(searchDto, tenantId);
             return Ok(result);
         }
         catch (Exception ex)
@@ -59,7 +61,8 @@ public class KnowledgeItemsController : ControllerBase
     [HttpPost]
     public async Task<ActionResult<KnowledgeArticleDto>> Create([FromBody] CreateKnowledgeArticleDto createDto)
     {
-        var article = await _knowledgeArticleService.CreateAsync(createDto);
+        var tenantId = GetTenantId();
+        var article = await _knowledgeArticleService.CreateAsync(createDto, tenantId);
         return CreatedAtAction(nameof(GetById), new { id = article.Id }, article);
     }
 
@@ -69,7 +72,8 @@ public class KnowledgeItemsController : ControllerBase
     [HttpPut("{id}")]
     public async Task<ActionResult<KnowledgeArticleDto>> Update(int id, [FromBody] UpdateKnowledgeArticleDto updateDto)
     {
-        var article = await _knowledgeArticleService.UpdateAsync(id, updateDto);
+        var tenantId = GetTenantId();
+        var article = await _knowledgeArticleService.UpdateAsync(id, updateDto, tenantId);
         if (article == null)
             return NotFound();
 
@@ -82,7 +86,8 @@ public class KnowledgeItemsController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<ActionResult> Delete(int id)
     {
-        var success = await _knowledgeArticleService.DeleteAsync(id);
+        var tenantId = GetTenantId();
+        var success = await _knowledgeArticleService.DeleteAsync(id, tenantId);
         if (!success)
             return NotFound();
 
@@ -95,7 +100,8 @@ public class KnowledgeItemsController : ControllerBase
     [HttpPost("{id}/restore")]
     public async Task<ActionResult> Restore(int id)
     {
-        var success = await _knowledgeArticleService.RestoreAsync(id);
+        var tenantId = GetTenantId();
+        var success = await _knowledgeArticleService.RestoreAsync(id, tenantId);
         if (!success)
             return NotFound();
 
@@ -108,7 +114,8 @@ public class KnowledgeItemsController : ControllerBase
     [HttpPost("{id}/publish")]
     public async Task<ActionResult> Publish(int id)
     {
-        var success = await _knowledgeArticleService.PublishAsync(id);
+        var tenantId = GetTenantId();
+        var success = await _knowledgeArticleService.PublishAsync(id, tenantId);
         if (!success)
             return NotFound();
 

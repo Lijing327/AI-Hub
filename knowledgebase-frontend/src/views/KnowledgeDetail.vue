@@ -83,17 +83,17 @@
               :key="att.id"
               class="attachment-item"
             >
-              <el-link :href="getFileUrl(att.fileUrl)" target="_blank" type="primary">
+              <el-link :href="getFileUrl(att.fileUrl || att.url)" target="_blank" type="primary">
                 <el-icon><Document /></el-icon>
                 {{ att.fileName }}
               </el-link>
               <span class="file-info">
-                ({{ att.fileType }} / {{ formatFileSize(att.fileSize) }})
+                ({{ att.fileType }} / {{ formatFileSize(att.fileSize || att.size) }})
               </span>
               <!-- 图片预览 -->
-              <div v-if="att.fileType === 'image'" class="image-preview">
+              <div v-if="att.fileType === 'image' || att.assetType === 'image'" class="image-preview">
                 <el-image
-                  :src="getFileUrl(att.fileUrl)"
+                  :src="getFileUrl(att.fileUrl || att.url)"
                   :preview-src-list="getImagePreviewList(item.attachments)"
                   fit="cover"
                   style="width: 200px; height: 200px; margin-top: 10px;"
@@ -105,7 +105,9 @@
                     <div class="image-error">
                       <el-icon><Picture /></el-icon>
                       <span>图片加载失败</span>
-                      <div style="font-size: 12px; margin-top: 4px;">{{ att.fileUrl }}</div>
+                      <div style="font-size: 12px; margin-top: 4px; word-break: break-all;">
+                        {{ getFileUrl(att.fileUrl || att.url) || att.fileUrl || att.url || 'URL为空' }}
+                      </div>
                     </div>
                   </template>
                 </el-image>
@@ -228,12 +230,25 @@ const formatFileSize = (bytes: number) => {
 }
 
 // 处理文件URL，如果是绝对路径且指向localhost:5000，转换为相对路径以使用代理
-const getFileUrl = (fileUrl: string): string => {
+const getFileUrl = (fileUrl: string | undefined): string => {
   if (!fileUrl) return ''
+  
   // 如果是开发环境且URL指向localhost:5000，转换为相对路径使用代理
-  if (import.meta.env.DEV && fileUrl.startsWith('http://localhost:5000/')) {
-    return fileUrl.replace('http://localhost:5000', '')
+  if (import.meta.env.DEV) {
+    // 处理 http://localhost:5000/uploads/... 格式
+    if (fileUrl.startsWith('http://localhost:5000/')) {
+      const relativePath = fileUrl.replace('http://localhost:5000', '')
+      console.log('转换URL:', fileUrl, '->', relativePath)
+      return relativePath
+    }
+    // 处理 http://localhost:5000 格式（无尾部斜杠）
+    if (fileUrl.startsWith('http://localhost:5000')) {
+      const relativePath = fileUrl.replace('http://localhost:5000', '')
+      console.log('转换URL:', fileUrl, '->', relativePath)
+      return relativePath
+    }
   }
+  
   // 生产环境或已经是相对路径，直接返回
   return fileUrl
 }
@@ -242,13 +257,16 @@ const getFileUrl = (fileUrl: string): string => {
 const getImagePreviewList = (attachments: AttachmentDto[] | undefined): string[] => {
   if (!attachments) return []
   return attachments
-    .filter(att => att.fileType === 'image')
-    .map(att => getFileUrl(att.fileUrl))
+    .filter(att => att.fileType === 'image' || att.assetType === 'image')
+    .map(att => getFileUrl(att.fileUrl || att.url))
+    .filter(url => url) // 过滤掉空URL
 }
 
 // 图片加载错误处理
 const handleImageError = (error: any) => {
   console.error('图片加载失败:', error)
+  console.error('原始URL:', item.value?.attachments?.find(a => a.fileType === 'image')?.fileUrl)
+  console.error('处理后的URL:', item.value?.attachments?.find(a => a.fileType === 'image')?.fileUrl ? getFileUrl(item.value.attachments.find(a => a.fileType === 'image')?.fileUrl) : 'N/A')
   // 可以在这里添加重试逻辑或显示默认图片
 }
 
