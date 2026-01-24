@@ -15,15 +15,27 @@
         class="edit-form"
       >
         <el-form-item label="标题" prop="title">
-          <el-input v-model="form.title" placeholder="请输入标题" />
+          <el-input 
+            v-model="form.title" 
+            placeholder="【设备/系统】出现【现象】（附加关键信息）例如：【造型机】启动后无法进入自动模式" 
+            maxlength="500"
+            show-word-limit
+          />
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="primary" :icon="Plus" @click="insertTemplate">
+            插入标准模板
+          </el-button>
+          <span class="template-tip">点击后自动填充标准模板骨架（不覆盖已有内容）</span>
         </el-form-item>
 
         <el-form-item label="问题描述" prop="questionText">
           <el-input
             v-model="form.questionText"
             type="textarea"
-            :rows="4"
-            placeholder="请输入问题描述"
+            :rows="6"
+            placeholder="【发生场景】在什么情况下出现（启动时/运行中/停机后/切换模式时）&#10;【具体表现】设备/系统具体表现出的异常现象&#10;【报警信息】是否有报警码、提示信息、界面截图（如有请写明）&#10;【影响范围】是否影响生产/是否可以临时运行"
           />
         </el-form-item>
 
@@ -31,8 +43,8 @@
           <el-input
             v-model="form.causeText"
             type="textarea"
-            :rows="4"
-            placeholder="请输入原因分析"
+            :rows="5"
+            placeholder="原因 1：&#10;原因 2：&#10;原因 3：&#10;&#10;提示：每一条原因是一个完整判断，按概率从高到低排列"
           />
         </el-form-item>
 
@@ -40,8 +52,8 @@
           <el-input
             v-model="form.solutionText"
             type="textarea"
-            :rows="6"
-            placeholder="请输入解决方案"
+            :rows="8"
+            placeholder="步骤 1：&#10;步骤 2：&#10;步骤 3：&#10;&#10;提示：强制要求一步一行，每个检查动作后可配图片/视频"
           />
         </el-form-item>
 
@@ -54,13 +66,13 @@
             >
               <el-input
                 v-model="item.key"
-                placeholder="字段名（如：地区、产品）"
+                placeholder="字段名（如：设备型号、系统版本、控制系统）"
                 class="scope-key"
                 style="width: 200px; margin-right: 10px"
               />
               <el-input
                 v-model="item.value"
-                placeholder="字段值（如：华东、产品A）"
+                placeholder="字段值（如：XXX-100、V2.3、西门子S7-1200）"
                 class="scope-value"
                 style="width: 300px; margin-right: 10px"
               />
@@ -82,7 +94,7 @@
               添加字段
             </el-button>
             <div class="scope-tip">
-              提示：可以添加多个字段，例如：地区=华东，产品=产品A
+              提示：结构化填写，便于后期筛选。例如：设备型号=XXX-100，系统版本=V2.3，控制系统=西门子S7-1200
             </div>
           </div>
         </el-form-item>
@@ -90,8 +102,15 @@
         <el-form-item label="标签" prop="tags">
           <el-input
             v-model="form.tags"
-            placeholder="多个标签用逗号分隔"
+            type="textarea"
+            :rows="2"
+            placeholder="多个标签用逗号或回车分隔，例如：造型机, 自动模式, 安全门, 无报警&#10;推荐：设备类型、现象类型、关键部件、报警码（3-6个）"
+            @blur="normalizeTags"
           />
+          <div class="tags-tip">
+            已输入标签：<el-tag v-for="tag in tagList" :key="tag" size="small" style="margin-right: 5px;">{{ tag }}</el-tag>
+            <span v-if="tagList.length === 0" style="color: #909399;">（无）</span>
+          </div>
         </el-form-item>
 
         <el-form-item label="附件">
@@ -117,6 +136,9 @@
           <el-button type="primary" @click="handleSubmit" :loading="submitting">
             保存
           </el-button>
+          <el-button type="success" @click="handlePublish" :loading="submitting" :disabled="!isEdit">
+            发布
+          </el-button>
           <el-button @click="handleCancel">取消</el-button>
         </el-form-item>
       </el-form>
@@ -127,7 +149,7 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage, ElUpload, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, ElUpload, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { knowledgeApi, attachmentApi } from '../api/knowledge'
 import type { KnowledgeItemDto, CreateKnowledgeItemDto, UpdateKnowledgeItemDto } from '../types/knowledge'
@@ -210,6 +232,165 @@ const parseScopeJson = (jsonStr: string | null | undefined) => {
     // 如果解析失败，保持默认值
     scopeItems.value = [{ key: '', value: '' }]
   }
+}
+
+// 标签列表（计算属性）
+const tagList = computed(() => {
+  if (!form.tags || form.tags.trim() === '') return []
+  return form.tags
+    .split(/[,\n\r]+/)
+    .map(tag => tag.trim())
+    .filter(tag => tag.length > 0)
+    .filter((tag, index, arr) => arr.indexOf(tag) === index) // 去重
+})
+
+// 规范化标签（去重、去空格）
+const normalizeTags = () => {
+  if (!form.tags || form.tags.trim() === '') {
+    form.tags = ''
+    return
+  }
+  
+  const tags = form.tags
+    .split(/[,\n\r]+/)
+    .map(tag => tag.trim())
+    .filter(tag => tag.length > 0)
+    .filter((tag, index, arr) => arr.indexOf(tag) === index) // 去重
+  
+  form.tags = tags.join(', ')
+}
+
+// 插入标准模板
+const insertTemplate = async () => {
+  // 检查是否有非空内容
+  const hasContent = 
+    form.questionText.trim() !== '' ||
+    form.causeText.trim() !== '' ||
+    form.solutionText.trim() !== '' ||
+    scopeItems.value.some(item => item.key.trim() !== '' || item.value.trim() !== '') ||
+    form.tags.trim() !== ''
+
+  if (hasContent) {
+    try {
+      await ElMessageBox.confirm(
+        '检测到已有内容，插入模板可能会覆盖部分字段。是否继续？',
+        '确认操作',
+        {
+          confirmButtonText: '继续',
+          cancelButtonText: '取消',
+          type: 'warning'
+        }
+      )
+    } catch {
+      return // 用户取消
+    }
+  }
+
+  // 插入模板（不覆盖已有非空内容）
+  if (form.questionText.trim() === '') {
+    form.questionText = '【发生场景】\n【具体表现】\n【报警信息】\n【影响范围】'
+  }
+
+  if (form.causeText.trim() === '') {
+    form.causeText = '原因 1：\n原因 2：\n原因 3：'
+  }
+
+  if (form.solutionText.trim() === '') {
+    form.solutionText = '步骤 1：\n步骤 2：\n步骤 3：'
+  }
+
+  // 适用范围：如果为空，添加常用字段
+  if (scopeItems.value.length === 1 && scopeItems.value[0].key.trim() === '' && scopeItems.value[0].value.trim() === '') {
+    scopeItems.value = [
+      { key: '设备型号', value: '' },
+      { key: '系统版本', value: '' },
+      { key: '控制系统', value: '' }
+    ]
+  }
+
+  if (form.tags.trim() === '') {
+    form.tags = ''
+  }
+
+  ElMessage.success('模板已插入，请根据实际情况填写')
+}
+
+// 发布前检查
+const validateBeforePublish = (): string[] => {
+  const warnings: string[] = []
+
+  // 检查标题长度
+  if (form.title.trim().length < 10) {
+    warnings.push('标题过短（建议至少10个字符），可能影响检索效果')
+  }
+
+  // 检查解决步骤数量
+  if (form.solutionText.trim()) {
+    // 匹配 "步骤 X：" 或 "步骤X：" 格式
+    const stepMatches = form.solutionText.match(/步骤\s*\d+[：:]/gi)
+    const stepCount = stepMatches ? stepMatches.length : 0
+    if (stepCount < 3) {
+      warnings.push(`解决步骤少于3条（当前${stepCount}条），建议至少3条以确保完整性`)
+    }
+  } else {
+    warnings.push('解决步骤为空，建议填写至少3条步骤')
+  }
+
+  // 检查标签数量
+  if (tagList.value.length < 3) {
+    warnings.push(`标签少于3个（当前${tagList.value.length}个），建议3-6个以提高检索精度`)
+  }
+
+  return warnings
+}
+
+// 发布
+const handlePublish = async () => {
+  if (!isEdit.value) {
+    ElMessage.warning('请先保存知识条目后再发布')
+    return
+  }
+
+  if (!formRef.value) return
+
+  // 提交前更新 scopeJson 和规范化标签
+  updateScopeJson()
+  normalizeTags()
+
+  await formRef.value.validate(async (valid) => {
+    if (!valid) return
+
+    // 发布前检查
+    const warnings = validateBeforePublish()
+    if (warnings.length > 0) {
+      try {
+        await ElMessageBox.confirm(
+          '发布前检查发现以下建议：\n\n' + warnings.map((w, i) => `${i + 1}. ${w}`).join('\n') + '\n\n是否仍要发布？',
+          '发布前提示',
+          {
+            confirmButtonText: '仍要发布',
+            cancelButtonText: '取消',
+            type: 'warning',
+            dangerouslyUseHTMLString: false
+          }
+        )
+      } catch {
+        return // 用户取消
+      }
+    }
+
+    submitting.value = true
+    try {
+      const id = Number(route.params.id)
+      await knowledgeApi.publish(id)
+      ElMessage.success('发布成功')
+      router.push('/knowledge')
+    } catch (error: any) {
+      ElMessage.error('发布失败: ' + (error.message || '未知错误'))
+    } finally {
+      submitting.value = false
+    }
+  })
 }
 
 const rules: FormRules = {
@@ -304,8 +485,9 @@ const handleRemove = async (file: any) => {
 const handleSubmit = async () => {
   if (!formRef.value) return
 
-  // 提交前更新 scopeJson
+  // 提交前更新 scopeJson 和规范化标签
   updateScopeJson()
+  normalizeTags()
 
   await formRef.value.validate(async (valid) => {
     if (!valid) return
@@ -376,5 +558,17 @@ onMounted(() => {
   color: #909399;
   font-size: 12px;
   margin-top: 8px;
+}
+
+.template-tip {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 10px;
+}
+
+.tags-tip {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #606266;
 }
 </style>
