@@ -1,6 +1,7 @@
 using ai_hub_service.DTOs;
 using ai_hub_service.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace ai_hub_service.Controllers;
 
@@ -132,6 +133,10 @@ public class InternalApiController : BaseController
 
         var tenantId = GetTenantId();
         var response = new BatchCreateAssetsResponseDto();
+        
+        // 添加日志记录
+        var logger = HttpContext.RequestServices.GetRequiredService<ILogger<InternalApiController>>();
+        logger.LogInformation($"批量创建附件: 收到 {request.Assets.Count} 个附件请求，租户ID: {tenantId}");
 
         for (int i = 0; i < request.Assets.Count; i++)
         {
@@ -146,12 +151,14 @@ public class InternalApiController : BaseController
                     resultItem.Success = false;
                     resultItem.Error = "ArticleId 必须大于 0";
                     response.FailureCount++;
+                    logger.LogWarning($"附件 {i} 创建失败: ArticleId 无效 ({assetDto.ArticleId})");
                 }
                 else if (string.IsNullOrWhiteSpace(assetDto.Url))
                 {
                     resultItem.Success = false;
                     resultItem.Error = "Url 不能为空";
                     response.FailureCount++;
+                    logger.LogWarning($"附件 {i} 创建失败: Url 为空");
                 }
                 else
                 {
@@ -159,6 +166,7 @@ public class InternalApiController : BaseController
                     resultItem.Success = true;
                     resultItem.AssetId = asset.Id;
                     response.SuccessCount++;
+                    logger.LogInformation($"附件 {i} 创建成功: ArticleId={assetDto.ArticleId}, FileName={assetDto.FileName}, AssetId={asset.Id}");
                 }
             }
             catch (Exception ex)
@@ -166,11 +174,13 @@ public class InternalApiController : BaseController
                 resultItem.Success = false;
                 resultItem.Error = ex.Message;
                 response.FailureCount++;
+                logger.LogError(ex, $"附件 {i} 创建异常: ArticleId={assetDto.ArticleId}, FileName={assetDto.FileName}, Error={ex.Message}");
             }
 
             response.Results.Add(resultItem);
         }
 
+        logger.LogInformation($"批量创建附件完成: 成功 {response.SuccessCount} 个，失败 {response.FailureCount} 个");
         return Ok(response);
     }
 }

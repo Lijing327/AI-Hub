@@ -106,7 +106,7 @@ def extract_filename_from_reference(text: str) -> Optional[str]:
     """
     从文本引用中提取文件名
     支持格式：
-    - 参考"xxx" 或 参考"xxx"（中文引号）
+    - 参考"xxx" 或 参考"xxx"（中文引号 "" 和英文引号 ""）
     - 参考：xxx
     - 见附件：xxx
     - 参考 xxx
@@ -117,186 +117,246 @@ def extract_filename_from_reference(text: str) -> Optional[str]:
     text = text.strip()
     
     # 匹配：参考"xxx" 或 参考"xxx"（支持中文引号 "" 和英文引号 ""）
-    # 匹配：参考"xxx"、参考"xxx"、参考"xxx"
+    # 正则：参考[""]... [""]（支持中文引号和英文引号）
+    # 使用字符类匹配所有类型的引号
     match = re.search(r'参考["""""]([^"""""]+)["""""]', text)
     if match:
         filename = match.group(1).strip()
-        # 去除可能残留的引号
-        filename = filename.strip('"""\'"')
+        # 去除可能残留的引号（包括全角单引号 ''）
+        filename = filename.strip('"""\'""\'')
         return filename if filename else None
     
     # 匹配：参考：xxx 或 参考:xxx
     match = re.search(r'参考[：:]\s*(.+)', text)
     if match:
         filename = match.group(1).strip()
-        # 去除可能的前后引号
-        filename = filename.strip('"""\'"')
+        # 去除可能的前后引号（包括全角单引号 ''）
+        filename = filename.strip('"""\'""\'')
         return filename if filename else None
     
     # 匹配：见附件：xxx
     match = re.search(r'见附件[：:]\s*(.+)', text)
     if match:
         filename = match.group(1).strip()
-        filename = filename.strip('"""\'"')
+        filename = filename.strip('"""\'""\'')
         return filename if filename else None
     
     # 匹配：参考 xxx（空格分隔）
     match = re.search(r'参考\s+(.+)', text)
     if match:
         filename = match.group(1).strip()
-        filename = filename.strip('"""\'"')
+        filename = filename.strip('"""\'""\'')
         return filename if filename else None
     
     # 如果都不匹配，返回原文（去除"参考"等前缀）
     filename = re.sub(r'^(参考|见附件)[：:\s]*', '', text)
-    filename = filename.strip('"""\'"')
+    filename = filename.strip('"""\'""\'')
     return filename.strip() if filename.strip() else None
 
 
-def find_attachment_file(filename: str) -> Optional[dict]:
+def _guess_asset_type_by_ext(ext: str) -> str:
+    """根据扩展名判断文件类型"""
+    ext = ext.lower()
+    if ext in ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv']:
+        return 'video'
+    if ext in ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp']:
+        return 'image'
+    if ext in ['.pdf']:
+        return 'pdf'
+    if ext in ['.doc', '.docx', '.xls', '.xlsx', '.txt', '.ppt', '.pptx']:
+        return 'other'
+    return 'other'
+
+
+def _should_skip_file(p: Path) -> bool:
+    """过滤系统/临时文件，避免脏数据"""
+    name = p.name.lower()
+    if name in ['thumbs.db', '.ds_store', 'desktop.ini']:
+        return True
+    if name.startswith('~$'):  # office 临时文件
+        return True
+    return False
+
+
+def _build_file_info(base_path: Path, file_path: Path) -> dict:
+    """构建文件信息字典"""
+    file_size = file_path.stat().st_size
+    relative_path = file_path.relative_to(base_path)
+    relative_path_str = str(relative_path).replace(os.sep, '/')
+    encoded_path = '/'.join(quote(part, safe='') for part in relative_path_str.split('/'))
+    file_url = f"{ATTACHMENT_BASE_URL.rstrip('/')}/{encoded_path}"
+    return {
+        "path": str(file_path),
+        "url": file_url,
+        "type": _guess_asset_type_by_ext(file_path.suffix),
+        "size": file_size,
+        "file_name": file_path.name,
+        "relative_path": relative_path_str,
+    }
+
+
+def find_attachment_files(filename: str) -> List[dict]:
     """
     在固定目录中递归查找附件文件（支持文件夹嵌套）
-    返回：{ "path": 文件路径, "url": 访问URL, "type": 文件类型, "size": 文件大小, "file_name": 文件名 }
+    返回：List[{ "path","url","type","size","file_name", "relative_path" }]
+    - 命中文件：返回 1 条
+    - 命中文件夹：返回该文件夹内所有文件（递归）的多条
+    - 未命中：返回空列表
     """
     if not ATTACHMENT_BASE_PATH or not ATTACHMENT_BASE_PATH.strip():
         logger.debug(f"ATTACHMENT_BASE_PATH 未配置，跳过文件查找: {filename}")
-        return None
-    
+        return []
+
     base_path = Path(ATTACHMENT_BASE_PATH.strip())
     if not base_path.exists():
         logger.debug(f"附件基础路径不存在: {base_path}，跳过文件查找: {filename}")
-        return None
-    
-    # 清理文件名：去除所有类型的引号和前后空格
-    clean_filename = filename.strip()
-    # 去除各种引号（中文引号、英文引号）
-    clean_filename = clean_filename.strip('"""\'"《》【】[]()（）')
-    clean_filename = clean_filename.strip()
-    
-    # 如果文件名已经包含扩展名，先提取基础名称
+        return []
+
+    # 清理文件名：去除引号、括号等包裹符号（包括全角单引号 ''）
+    clean_filename = filename.strip().strip('"""\'""\'《》【】[]()（）').strip()
+
+    # 如果用户写了扩展名，先转 stem（Excel 里可能不带扩展名）
     if '.' in clean_filename:
         clean_filename = Path(clean_filename).stem
-    
-    # 支持的扩展名和对应的文件类型
+
+    # 扩展名映射（用于"文件命中"阶段）
     extensions_map = {
         'video': ['.mp4', '.avi', '.mov', '.wmv', '.flv', '.mkv'],
         'image': ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'],
         'pdf': ['.pdf'],
         'other': ['.doc', '.docx', '.xls', '.xlsx', '.txt', '.ppt', '.pptx']
     }
-    
-    # 尝试不同的扩展名，递归搜索所有子文件夹
+
+    # ========== 1) 精确匹配 / 递归精确匹配（命中文件就返回 1 条） ==========
     for asset_type, extensions in extensions_map.items():
         for ext in extensions:
-            # 1. 先尝试精确匹配（文件名完全匹配，包括扩展名）
             full_filename = clean_filename + ext
-            
-            # 递归搜索：从根目录开始，遍历所有子文件夹
+
+            # 根目录精确匹配
+            root_file = base_path / full_filename
+            if root_file.is_file():
+                logger.info(f"找到附件文件（根目录精确匹配）: {clean_filename} -> {root_file.name}")
+                info = _build_file_info(base_path, root_file)
+                info["type"] = asset_type  # 按映射强制类型
+                return [info]
+
+            # 全目录精确匹配
             for file_path in base_path.rglob(full_filename):
                 if file_path.is_file():
-                    file_size = file_path.stat().st_size
-                    # 计算相对路径用于生成 URL
-                    relative_path = file_path.relative_to(base_path)
-                    # URL 格式：{ATTACHMENT_BASE_URL}/{相对路径}，对路径进行URL编码以支持中文
-                    relative_path_str = str(relative_path).replace(os.sep, '/')
-                    # 对路径的每一部分进行编码，但保留斜杠
-                    encoded_path = '/'.join(quote(part, safe='') for part in relative_path_str.split('/'))
-                    file_url = f"{ATTACHMENT_BASE_URL.rstrip('/')}/{encoded_path}"
-                    logger.info(f"找到附件文件（精确匹配）: {clean_filename} -> {file_path.name} (路径: {relative_path})")
-                    return {
-                        "path": str(file_path),
-                        "url": file_url,
-                        "type": asset_type,
-                        "size": file_size,
-                        "file_name": file_path.name
-                    }
-            
-            # 2. 如果精确匹配失败，尝试模糊匹配（文件名包含关键字）
-            # 例如：filename="下芯机比例阀拆解"，可能匹配 "下芯机比例阀拆解.mp4" 或 "下芯机比例阀拆装.mp4"
+                    logger.info(f"找到附件文件（精确匹配）: {clean_filename} -> {file_path.name}")
+                    info = _build_file_info(base_path, file_path)
+                    info["type"] = asset_type
+                    return [info]
+
+            # ========== 2) 模糊匹配（命中文件就返回 1 条） ==========
             pattern = f"*{clean_filename}*{ext}"
-            matches = list(base_path.rglob(pattern))
+
+            root_matches = list(base_path.glob(pattern))
+            matches = root_matches + list(base_path.rglob(pattern))
+
+            # 去重
+            seen = set()
+            unique_matches = []
+            for m in matches:
+                if m not in seen:
+                    seen.add(m)
+                    unique_matches.append(m)
+            matches = unique_matches
+
             if matches:
-                # 优先选择文件名最接近的（包含完整关键字）
                 best_match = None
-                for file_path in matches:
-                    if file_path.is_file():
-                        file_name_lower = file_path.stem.lower()
-                        clean_lower = clean_filename.lower()
-                        # 如果文件名包含完整的关键字，优先选择
-                        if clean_lower in file_name_lower:
-                            best_match = file_path
+                clean_lower = clean_filename.lower()
+
+                for p in matches:
+                    if p.is_file() and clean_lower in p.stem.lower():
+                        best_match = p
+                        break
+
+                if not best_match:
+                    for p in matches:
+                        if p.is_file():
+                            best_match = p
                             break
-                
-                # 如果没有完全匹配的，选择第一个匹配的文件
-                if not best_match and matches:
-                    for file_path in matches:
-                        if file_path.is_file():
-                            best_match = file_path
-                            break
-                
+
                 if best_match and best_match.is_file():
-                    file_size = best_match.stat().st_size
-                    relative_path = best_match.relative_to(base_path)
-                    relative_path_str = str(relative_path).replace(os.sep, '/')
-                    encoded_path = '/'.join(quote(part, safe='') for part in relative_path_str.split('/'))
-                    file_url = f"{ATTACHMENT_BASE_URL.rstrip('/')}/{encoded_path}"
-                    logger.info(f"找到附件文件（模糊匹配）: {clean_filename} -> {best_match.name} (路径: {relative_path})")
-                    return {
-                        "path": str(best_match),
-                        "url": file_url,
-                        "type": asset_type,
-                        "size": file_size,
-                        "file_name": best_match.name
-                    }
-    
-    # 3. 如果文件匹配失败，尝试匹配文件夹名称
-    # 例如：Excel 引用 "加砂球阀清挤砂"，匹配文件夹 "加砂球阀清挤砂"，返回文件夹内的第一个文件
+                    logger.info(f"找到附件文件（模糊匹配）: {clean_filename} -> {best_match.name}")
+                    info = _build_file_info(base_path, best_match)
+                    info["type"] = asset_type
+                    return [info]
+
+    # ========== 3) 文件夹命中：返回该文件夹内所有文件（递归，多条） ==========
     logger.debug(f"文件匹配失败，尝试匹配文件夹名称: {clean_filename}")
     clean_lower = clean_filename.lower()
-    
-    # 收集所有匹配的文件夹（优先完全匹配）
+
     matched_folders = []
     for folder_path in base_path.rglob("*"):
-        if folder_path.is_dir():
-            folder_name = folder_path.name
-            folder_lower = folder_name.lower()
-            
-            # 完全匹配优先
-            if clean_lower == folder_lower:
-                matched_folders.insert(0, (folder_path, folder_name, 1))  # 优先级 1：完全匹配
-            # 包含匹配
-            elif clean_lower in folder_lower or folder_lower in clean_lower:
-                matched_folders.append((folder_path, folder_name, 2))  # 优先级 2：包含匹配
+        if not folder_path.is_dir():
+            continue
+        folder_lower = folder_path.name.lower()
+
+        # 完全匹配优先
+        if clean_lower == folder_lower:
+            matched_folders.insert(0, (folder_path, 1))
+        # 包含匹配兜底
+        elif clean_lower in folder_lower or folder_lower in clean_lower:
+            matched_folders.append((folder_path, 2))
+
+    matched_folders.sort(key=lambda x: x[1])
+
+    for folder_path, priority in matched_folders:
+        # 递归收集文件夹内所有文件
+        all_files: List[Path] = []
+        for p in folder_path.rglob("*"):
+            if p.is_file() and not _should_skip_file(p):
+                all_files.append(p)
+
+        if not all_files:
+            continue
+
+        # 排序保证稳定（方便比对导入结果）
+        all_files.sort(key=lambda p: str(p).lower())
+
+        results = []
+        for p in all_files:
+            info = _build_file_info(base_path, p)
+            results.append(info)
+
+        match_type = "完全匹配" if priority == 1 else "包含匹配"
+        logger.info(
+            f"找到附件文件（文件夹{match_type}）: {clean_filename} -> 文件夹[{folder_path.name}] 共 {len(results)} 个文件"
+        )
+        return results
+
+    # P1: 未命中时打印"根目录/全目录"候选 stem（限制 5 个）
+    logger.warning(f"未找到附件文件或文件夹: {filename} (清理后: {clean_filename}, 搜索路径: {base_path})")
     
-    # 按优先级排序，优先处理完全匹配的文件夹
-    matched_folders.sort(key=lambda x: x[2])
+    # 列出根目录下可能的候选文件（限制 5 个）
+    try:
+        root_candidates = []
+        for file_path in base_path.iterdir():
+            if file_path.is_file() and clean_filename.lower() in file_path.stem.lower():
+                root_candidates.append(file_path.stem)
+                if len(root_candidates) >= 5:
+                    break
+        if root_candidates:
+            logger.debug(f"  根目录候选文件（stem）: {root_candidates}")
+    except Exception as e:
+        logger.debug(f"  无法列出根目录候选文件: {str(e)}")
     
-    # 在匹配的文件夹中查找文件
-    for folder_path, folder_name, priority in matched_folders:
-        # 按文件类型优先级查找（视频 > 图片 > PDF > 其他）
-        type_priority = ['video', 'image', 'pdf', 'other']
-        for asset_type in type_priority:
-            if asset_type in extensions_map:
-                for ext in extensions_map[asset_type]:
-                    for file_path in folder_path.glob(f"*{ext}"):
-                        if file_path.is_file():
-                            file_size = file_path.stat().st_size
-                            relative_path = file_path.relative_to(base_path)
-                            relative_path_str = str(relative_path).replace(os.sep, '/')
-                            encoded_path = '/'.join(quote(part, safe='') for part in relative_path_str.split('/'))
-                            file_url = f"{ATTACHMENT_BASE_URL.rstrip('/')}/{encoded_path}"
-                            match_type = "完全匹配" if priority == 1 else "包含匹配"
-                            logger.info(f"找到附件文件（文件夹{match_type}）: {clean_filename} -> 文件夹[{folder_name}]/{file_path.name} (路径: {relative_path})")
-                            return {
-                                "path": str(file_path),
-                                "url": file_url,
-                                "type": asset_type,
-                                "size": file_size,
-                                "file_name": file_path.name
-                            }
+    # 列出全目录下可能的候选文件（限制 5 个）
+    try:
+        all_candidates = []
+        for file_path in base_path.rglob("*"):
+            if file_path.is_file() and clean_filename.lower() in file_path.stem.lower():
+                all_candidates.append(file_path.stem)
+                if len(all_candidates) >= 5:
+                    break
+        if all_candidates and len(all_candidates) > len(root_candidates) if 'root_candidates' in locals() else True:
+            logger.debug(f"  全目录候选文件（stem）: {all_candidates}")
+    except Exception as e:
+        logger.debug(f"  无法列出全目录候选文件: {str(e)}")
     
-    logger.debug(f"未找到附件文件: {filename} (清理后: {clean_filename}, 搜索路径: {base_path})")
-    return None
+    return []
 
 
 def map_excel_row_to_article(row: pd.Series, source_file_name: str, sheet_name: str, row_index: int) -> Optional[dict]:
@@ -424,43 +484,81 @@ def map_excel_row_to_article(row: pd.Series, source_file_name: str, sheet_name: 
                 if part:
                     all_references.append(part)
         
-        # 如果按分隔符分割后只有一个，尝试从文本中提取所有"参考"xxx""格式的引用
-        if len(all_references) == 1:
-            # 使用正则表达式提取所有"参考"xxx""格式的引用
+        # P0: 如果一段里出现多个"参考"，强制二次正则提取并展开
+        # 检查是否包含多个"参考"关键字
+        reference_count = video_reference.count('参考')
+        if reference_count > 1 or len(all_references) == 1:
+            # 使用正则表达式提取所有"参考"xxx""格式的引用（支持中文引号 "" 和英文引号 ""）
+            # 正则：参考[""]... [""]（支持中文引号和英文引号）
             pattern = r'参考["""""]([^"""""]+)["""""]'
             matches = re.findall(pattern, video_reference)
             if matches:
-                all_references = [f'参考"{m}"' for m in matches]
+                # 如果正则提取到更多引用，使用正则提取的结果
+                if len(matches) > len(all_references):
+                    all_references = [f'参考"{m}"' for m in matches]
+                    logger.debug(f"通过正则提取到 {len(all_references)} 个引用（原分割结果: {len(all_references) - len(matches) + len(matches)} 个）")
+                elif len(matches) == len(all_references) and reference_count > 1:
+                    # 即使数量相同，如果检测到多个"参考"，也使用正则提取的结果（更准确）
+                    all_references = [f'参考"{m}"' for m in matches]
+                    logger.debug(f"检测到多个'参考'，使用正则提取结果: {len(all_references)} 个引用")
         
         if len(all_references) > 1:
             logger.info(f"检测到 {len(all_references)} 个引用，将尝试匹配所有引用")
         else:
             logger.debug(f"提取到 {len(all_references)} 个引用: {all_references}")
         
-        for ref_line in all_references:
+        matched_count = 0
+        for idx, ref_line in enumerate(all_references, 1):
             extracted_filename = extract_filename_from_reference(ref_line)
             if extracted_filename:
-                # 再次清理文件名（确保去除所有引号）
-                clean_extracted = extracted_filename.strip('"""\'"《》【】[]()（）').strip()
+                # 再次清理文件名（确保去除所有引号，包括全角单引号 ''）
+                clean_extracted = extracted_filename.strip('"""\'""\'《》【】[]()（）').strip()
                 if not clean_extracted:
+                    logger.debug(f"引用 {idx}/{len(all_references)}: 清理后文件名为空 (原始: {ref_line[:50]}...)")
                     continue
                 
-                file_info = find_attachment_file(clean_extracted)
-                if file_info:
-                    # 找到匹配的文件，添加到列表（不再 break，继续处理其他引用）
-                    attachment_info_list.append({
-                        "filename": clean_extracted,
-                        "file_name": file_info.get("file_name", os.path.basename(file_info["path"])),
-                        "url": file_info["url"],
-                        "asset_type": file_info["type"],
-                        "size": file_info["size"]
-                    })
-                    logger.info(f"✓ 找到附件文件: {clean_extracted} -> {file_info['url']}")
+                file_infos = find_attachment_files(clean_extracted)
+                if file_infos:
+                    # 找到匹配的文件（可能是单个文件或多个文件），全部添加到列表
+                    for file_info in file_infos:
+                        attachment_info_list.append({
+                            "filename": clean_extracted,
+                            "file_name": file_info.get("file_name", os.path.basename(file_info["path"])),
+                            "url": file_info["url"],
+                            "asset_type": file_info["type"],
+                            "size": file_info["size"],
+                            "relative_path": file_info.get("relative_path"),
+                            "source_ref": clean_extracted,  # Excel 引用名（用于溯源）
+                            "source_folder": Path(file_info["path"]).parent.name if file_info.get("path") else None
+                        })
+                    matched_count += len(file_infos)
+                    if len(file_infos) == 1:
+                        logger.info(f"✓ [{idx}/{len(all_references)}] 找到附件: {clean_extracted} -> {file_infos[0]['url']}")
+                    else:
+                        logger.info(f"✓ [{idx}/{len(all_references)}] 找到附件（文件夹）: {clean_extracted} -> {len(file_infos)} 个文件")
                 else:
-                    logger.debug(f"未找到附件文件: {clean_extracted} (原始引用: {ref_line[:50]}...)")
+                    logger.warning(f"✗ [{idx}/{len(all_references)}] 未找到附件: {clean_extracted} (原始引用: {ref_line[:50]}...)")
+            else:
+                logger.debug(f"引用 {idx}/{len(all_references)}: 无法提取文件名 (原始: {ref_line[:50]}...)")
+        
+        if len(all_references) > 1:
+            # P1: 匹配统计拆成 "命中引用数 / 总引用数 + 文件总数"
+            total_files = len(attachment_info_list)
+            logger.info(f"多引用匹配结果: {matched_count}/{len(all_references)} 个引用找到文件，共 {total_files} 个文件")
     
-    # 如果只有一个附件，保持向后兼容（单个对象），如果有多个，使用列表
-    attachment_info = attachment_info_list[0] if len(attachment_info_list) == 1 else (attachment_info_list if attachment_info_list else None)
+    # _attachment_info 始终是列表（统一处理，避免兼容性问题）
+    attachment_info = attachment_info_list if attachment_info_list else None
+    
+    # 去重：基于 URL 或 relative_path 去重（避免重复创建）
+    if attachment_info:
+        seen_urls = set()
+        unique_attachments = []
+        for att in attachment_info:
+            url_key = att.get("url") or att.get("relative_path")
+            if url_key and url_key not in seen_urls:
+                seen_urls.add(url_key)
+                unique_attachments.append(att)
+        attachment_info = unique_attachments if unique_attachments else None
     
     return {
         "title": title,
@@ -470,7 +568,8 @@ def map_excel_row_to_article(row: pd.Series, source_file_name: str, sheet_name: 
         "scopeJson": scope_json,
         "tags": ", ".join(tags),
         "createdBy": "系统导入",
-        "_attachment_info": attachment_info  # 内部字段，用于后续创建附件
+        "_attachment_info": attachment_info,  # 内部字段，始终是列表或 None，不发送给后端
+        "_has_attachment_reference": has_attachment_reference  # 标记是否有附件引用（用于统计）
     }
 
 
@@ -588,10 +687,11 @@ async def import_excel(file: UploadFile = File(...)):
         for a in articles_with_attachments:
             att_info = a.get("_attachment_info")
             if att_info:
-                # 如果是列表，统计列表长度；如果是单个对象，计数为1
+                # _attachment_info 现在始终是列表
                 if isinstance(att_info, list):
                     attachment_match_count += len(att_info)
                 else:
+                    # 兼容旧数据
                     attachment_match_count += 1
         
         attachment_total = sum(1 for a in articles_with_attachments if a.get("_has_attachment_reference", False))
@@ -667,10 +767,11 @@ async def import_excel(file: UploadFile = File(...)):
                     if i < len(articles_with_attachments):
                         att_info = articles_with_attachments[i].get("_attachment_info")
                         if att_info:
-                            # 如果是列表，直接使用；如果是单个对象，转换为列表
+                            # _attachment_info 现在始终是列表（统一处理）
                             if isinstance(att_info, list):
                                 article_id_to_attachments[article_id] = att_info
                             else:
+                                # 兼容旧数据（理论上不应该出现，但保险起见）
                                 article_id_to_attachments[article_id] = [att_info]
                 elif not item.get("success"):
                     # 记录后端返回的失败信息
@@ -717,9 +818,44 @@ async def import_excel(file: UploadFile = File(...)):
                         
                         if asset_response.status_code == 200:
                             asset_result = asset_response.json()
-                            logger.info(f"成功创建 {asset_result.get('successCount', 0)} 个附件记录")
+                            success_count = asset_result.get('successCount', 0)
+                            failure_count = asset_result.get('failureCount', 0)
+                            logger.info(f"✅ 附件创建结果: 成功 {success_count} 个，失败 {failure_count} 个")
+                            
+                            # 记录成功的附件详情（包含数据库ID）
+                            if success_count > 0:
+                                results = asset_result.get('results', [])
+                                created_assets = []  # 记录成功创建的附件信息
+                                for result_item in results:
+                                    if result_item.get('success'):
+                                        index = result_item.get('index', -1)
+                                        asset_id = result_item.get('assetId')
+                                        if index < len(assets_to_create):
+                                            success_asset = assets_to_create[index]
+                                            created_assets.append({
+                                                'articleId': success_asset.get('articleId'),
+                                                'fileName': success_asset.get('fileName'),
+                                                'assetId': asset_id
+                                            })
+                                            logger.info(f"  ✓ 附件 [{index}] 已写入数据库: ArticleId={success_asset.get('articleId')}, FileName={success_asset.get('fileName')}, AssetId={asset_id}")
+                                
+                                # 验证：尝试查询刚创建的附件（可选，用于确认）
+                                if created_assets:
+                                    logger.info(f"📋 附件记录已成功写入数据库，共 {len(created_assets)} 条记录")
+                            
+                            # 记录失败的附件详情
+                            if failure_count > 0:
+                                results = asset_result.get('results', [])
+                                for result_item in results:
+                                    if not result_item.get('success'):
+                                        index = result_item.get('index', -1)
+                                        error = result_item.get('error', '未知错误')
+                                        if index < len(assets_to_create):
+                                            failed_asset = assets_to_create[index]
+                                            logger.warning(f"  ✗ 附件创建失败 [{index}]: ArticleId={failed_asset.get('articleId')}, FileName={failed_asset.get('fileName')}, Error={error}")
                         else:
-                            logger.warning(f"创建附件失败: {asset_response.status_code} - {asset_response.text}")
+                            logger.error(f"❌ 创建附件API调用失败: {asset_response.status_code} - {asset_response.text}")
+                            logger.error(f"   响应内容: {asset_response.text[:500]}")
                     except Exception as e:
                         logger.error(f"创建附件时出错: {str(e)}")
                         # 附件创建失败不影响主流程

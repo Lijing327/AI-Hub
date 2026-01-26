@@ -32,11 +32,11 @@ public class KnowledgeArticleService : IKnowledgeArticleService
 
         if (article == null) return null;
 
-        // 手动加载未删除的附件
+        // 手动加载未删除的附件（确保租户ID匹配）
         await _context.Entry(article)
             .Collection(a => a.Assets)
             .Query()
-            .Where(asset => asset.DeletedAt == null)
+            .Where(asset => asset.DeletedAt == null && asset.TenantId == tenantId) // 确保租户ID匹配
             .LoadAsync();
 
         if (article == null) return null;
