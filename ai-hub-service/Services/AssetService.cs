@@ -168,6 +168,54 @@ public class AssetService : IAssetService
     }
 
     /// <summary>
+    /// 创建附件记录（不实际上传文件，文件已在固定位置）
+    /// </summary>
+    public async Task<AssetDto> CreateAsync(ai_hub_service.DTOs.CreateAssetDto createDto, string tenantId)
+    {
+        // 验证知识条目是否存在且属于当前租户
+        var article = await _context.KnowledgeArticles
+            .Where(a => a.Id == createDto.ArticleId && a.TenantId == tenantId && a.DeletedAt == null)
+            .FirstOrDefaultAsync();
+        if (article == null)
+            throw new UnauthorizedAccessException($"知识条目 {createDto.ArticleId} 不存在或不属于当前租户");
+
+        // 验证资产类型
+        var allowedTypes = new[] { "image", "video", "pdf", "other" };
+        if (!allowedTypes.Contains(createDto.AssetType))
+            throw new ArgumentException($"不支持的文件类型: {createDto.AssetType}");
+
+        // 创建附件记录
+        var asset = new Asset
+        {
+            TenantId = tenantId,
+            ArticleId = createDto.ArticleId,
+            AssetType = createDto.AssetType,
+            FileName = createDto.FileName,
+            Url = createDto.Url,
+            Size = createDto.Size,
+            Duration = createDto.Duration,
+            CreatedAt = DateTime.Now
+        };
+
+        _context.Assets.Add(asset);
+        await _context.SaveChangesAsync();
+
+        return new AssetDto
+        {
+            Id = asset.Id,
+            TenantId = asset.TenantId,
+            ArticleId = asset.ArticleId,
+            AssetType = asset.AssetType,
+            FileName = asset.FileName,
+            Url = asset.Url,
+            Size = asset.Size,
+            Duration = asset.Duration,
+            CreatedAt = asset.CreatedAt,
+            DeletedAt = asset.DeletedAt
+        };
+    }
+
+    /// <summary>
     /// 根据ContentType和文件名判断资产类型
     /// </summary>
     private string GetAssetType(string contentType, string fileName)

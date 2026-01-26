@@ -72,12 +72,48 @@ app.UseCors("AllowVueApp");
 // 添加租户隔离中间件（必须在路由之前）
 app.UseMiddleware<TenantMiddleware>();
 
+// 添加内部 API 鉴权中间件（必须在路由之前，租户中间件之后）
+app.UseMiddleware<InternalApiAuthMiddleware>();
+
 // 配置静态文件服务（用于提供上传的文件访问）
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads");
 if (!Directory.Exists(uploadsPath))
 {
     Directory.CreateDirectory(uploadsPath);
 }
+
+// 配置附件静态文件服务（支持从两个位置查找文件：优先附件目录，然后 wwwroot/uploads）
+var attachmentBasePath = app.Configuration["AttachmentStorage:BasePath"];
+
+// 如果配置了附件目录，优先使用附件目录的静态文件服务
+if (!string.IsNullOrEmpty(attachmentBasePath) && Directory.Exists(attachmentBasePath))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(attachmentBasePath),
+        RequestPath = "/uploads",
+        OnPrepareResponse = ctx =>
+        {
+            // 允许跨域访问静态文件
+            ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+            ctx.Context.Response.Headers.Append("Access-Control-Allow-Methods", "GET, OPTIONS");
+            ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
+            
+            // 设置缓存策略
+            var fileName = ctx.File.Name.ToLower();
+            if (fileName.EndsWith(".jpg") || fileName.EndsWith(".jpeg") || 
+                fileName.EndsWith(".png") || fileName.EndsWith(".gif") ||
+                fileName.EndsWith(".webp") || fileName.EndsWith(".mp4") ||
+                fileName.EndsWith(".avi") || fileName.EndsWith(".mov") ||
+                fileName.EndsWith(".wmv"))
+            {
+                ctx.Context.Response.Headers.Append("Cache-Control", "public, max-age=31536000");
+            }
+        }
+    });
+}
+
+// 然后配置 wwwroot/uploads 的静态文件服务（作为回退）
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(
@@ -91,9 +127,12 @@ app.UseStaticFiles(new StaticFileOptions
         ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
         
         // 设置缓存策略
-        if (ctx.File.Name.EndsWith(".jpg") || ctx.File.Name.EndsWith(".jpeg") || 
-            ctx.File.Name.EndsWith(".png") || ctx.File.Name.EndsWith(".gif") ||
-            ctx.File.Name.EndsWith(".webp"))
+        var fileName = ctx.File.Name.ToLower();
+        if (fileName.EndsWith(".jpg") || fileName.EndsWith(".jpeg") || 
+            fileName.EndsWith(".png") || fileName.EndsWith(".gif") ||
+            fileName.EndsWith(".webp") || fileName.EndsWith(".mp4") ||
+            fileName.EndsWith(".avi") || fileName.EndsWith(".mov") ||
+            fileName.EndsWith(".wmv"))
         {
             ctx.Context.Response.Headers.Append("Cache-Control", "public, max-age=31536000");
         }

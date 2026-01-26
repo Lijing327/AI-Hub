@@ -3,10 +3,11 @@
     "ai-hub-service": {
       "commandName": "Project",
       "launchBrowser": true,
+      "launchUrl": "swagger",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       },
-      "applicationUrl": "https://localhost:50936;http://localhost:50937"
+      "applicationUrl": "http://localhost:5000"
     }
   }
 }
