@@ -1,6 +1,7 @@
 using ai_hub_service.DTOs;
 using ai_hub_service.Services;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Logging;
 
 namespace ai_hub_service.Controllers;
 
@@ -12,10 +13,14 @@ namespace ai_hub_service.Controllers;
 public class KnowledgeItemsController : BaseController
 {
     private readonly IKnowledgeArticleService _knowledgeArticleService;
+    private readonly ILogger<KnowledgeItemsController> _logger;
 
-    public KnowledgeItemsController(IKnowledgeArticleService knowledgeArticleService)
+    public KnowledgeItemsController(
+        IKnowledgeArticleService knowledgeArticleService,
+        ILogger<KnowledgeItemsController> logger)
     {
         _knowledgeArticleService = knowledgeArticleService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -41,11 +46,24 @@ public class KnowledgeItemsController : BaseController
         try
         {
             var tenantId = GetTenantId();
+            _logger.LogInformation(
+                "收到搜索请求 - TenantId: {TenantId}, Keyword: {Keyword}, Status: {Status}",
+                tenantId, searchDto.Keyword, searchDto.Status);
+            
             var result = await _knowledgeArticleService.SearchAsync(searchDto, tenantId);
+            
+            _logger.LogInformation(
+                "搜索完成 - 找到 {Count} 条记录",
+                result.TotalCount);
+            
             return Ok(result);
         }
         catch (Exception ex)
         {
+            _logger.LogError(ex, 
+                "搜索知识条目时发生错误 - Keyword: {Keyword}, Status: {Status}",
+                searchDto.Keyword, searchDto.Status);
+            
             // 记录异常并返回500错误
             return StatusCode(500, new { 
                 error = "搜索知识条目时发生错误", 

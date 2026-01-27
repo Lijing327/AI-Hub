@@ -102,6 +102,81 @@ def format_as_steps(text: Optional[str]) -> Optional[str]:
     return '\n'.join([f"步骤 {i + 1}：{s}" for i, s in enumerate(steps)])
 
 
+def clean_bracketed_labels(text: str) -> str:
+    """
+    清理文本中的中括号标签和列标题
+    移除：【序号】、【现象（问题）】、【检查点（原因）】、【维修对策（解决办法）】、【维修视频（附件）】、【YH400/YH500】等
+    
+    支持多种格式：
+    - 【序号】、【现象（问题）】等（中文括号）
+    - [序号]、[现象(问题)]等（英文括号）
+    - 各种变体：现象(问题)、现象（问题）、现象 (问题)等
+    """
+    if not text or not isinstance(text, str):
+        return text if text else ""
+    
+    import re
+    
+    # 更全面的模式匹配，支持各种变体
+    # 使用更简单直接的方式：匹配所有包含这些关键词的中括号内容
+    patterns_to_remove = [
+        # 匹配任何包含"序号"的中括号
+        r'【[^】]*序号[^】]*】',
+        # 匹配任何包含"现象"和"问题"的中括号（支持各种变体）
+        r'【[^】]*现象[^】]*问题[^】]*】',
+        r'【[^】]*现象[^】]*】',
+        r'【[^】]*问题[^】]*】',
+        # 匹配任何包含"检查点"和"原因"的中括号
+        r'【[^】]*检查点[^】]*原因[^】]*】',
+        r'【[^】]*检查点[^】]*】',
+        r'【[^】]*原因[^】]*】',
+        # 匹配任何包含"维修对策"和"解决办法"的中括号
+        r'【[^】]*维修对策[^】]*解决办法[^】]*】',
+        r'【[^】]*维修对策[^】]*】',
+        r'【[^】]*解决办法[^】]*】',
+        # 匹配任何包含"维修视频"和"附件"的中括号
+        r'【[^】]*维修视频[^】]*附件[^】]*】',
+        r'【[^】]*维修视频[^】]*】',
+        r'【[^】]*附件[^】]*】',
+        # 匹配型号信息
+        r'【[^】]*YH400[^】]*YH500[^】]*】',
+        r'【[^】]*YH400[^】]*】',
+        r'【[^】]*YH500[^】]*】',
+        # 英文括号格式（同样处理）
+        r'\[[^\]]*序号[^\]]*\]',
+        r'\[[^\]]*现象[^\]]*问题[^\]]*\]',
+        r'\[[^\]]*检查点[^\]]*原因[^\]]*\]',
+        r'\[[^\]]*维修对策[^\]]*解决办法[^\]]*\]',
+        r'\[[^\]]*维修视频[^\]]*附件[^\]]*\]',
+        r'\[[^\]]*YH400[^\]]*YH500[^\]]*\]',
+        r'\[[^\]]*YH400[^\]]*\]',
+        r'\[[^\]]*YH500[^\]]*\]',
+    ]
+    
+    cleaned_text = text
+    # 多次清理，确保所有匹配都被移除
+    for _ in range(5):  # 循环5次，确保嵌套或重复的标签都被清理
+        old_text = cleaned_text
+        for pattern in patterns_to_remove:
+            cleaned_text = re.sub(pattern, '', cleaned_text, flags=re.IGNORECASE)
+        # 如果这一轮没有变化，提前退出
+        if cleaned_text == old_text:
+            break
+    
+    # 清理多余的空白字符（但保留换行）
+    # 先清理连续的空格
+    cleaned_text = re.sub(r'[ \t]+', ' ', cleaned_text)
+    # 清理行首行尾空格（但保留换行）
+    lines = cleaned_text.split('\n')
+    cleaned_lines = [line.strip() for line in lines]
+    cleaned_text = '\n'.join(cleaned_lines)
+    # 清理多余的连续换行（最多保留一个空行）
+    cleaned_text = re.sub(r'\n{3,}', '\n\n', cleaned_text)
+    cleaned_text = cleaned_text.strip()
+    
+    return cleaned_text
+
+
 def extract_filename_from_reference(text: str) -> Optional[str]:
     """
     从文本引用中提取文件名
@@ -214,10 +289,13 @@ def find_attachment_files(filename: str) -> List[dict]:
 
     # 清理文件名：去除引号、括号等包裹符号（包括全角单引号 ''）
     clean_filename = filename.strip().strip('"""\'""\'《》【】[]()（）').strip()
+    logger.debug(f"开始查找附件: 原始文件名='{filename}', 清理后='{clean_filename}'")
 
     # 如果用户写了扩展名，先转 stem（Excel 里可能不带扩展名）
     if '.' in clean_filename:
+        original_clean = clean_filename
         clean_filename = Path(clean_filename).stem
+        logger.debug(f"检测到扩展名，提取stem: '{original_clean}' -> '{clean_filename}'")
 
     # 扩展名映射（用于"文件命中"阶段）
     extensions_map = {
@@ -231,6 +309,7 @@ def find_attachment_files(filename: str) -> List[dict]:
     for asset_type, extensions in extensions_map.items():
         for ext in extensions:
             full_filename = clean_filename + ext
+            logger.debug(f"尝试精确匹配: '{full_filename}' (类型: {asset_type}, 扩展名: {ext})")
 
             # 根目录精确匹配
             root_file = base_path / full_filename
@@ -239,9 +318,13 @@ def find_attachment_files(filename: str) -> List[dict]:
                 info = _build_file_info(base_path, root_file)
                 info["type"] = asset_type  # 按映射强制类型
                 return [info]
+            else:
+                logger.debug(f"  根目录精确匹配失败: {root_file} (存在: {root_file.exists()}, 是文件: {root_file.is_file() if root_file.exists() else False})")
 
             # 全目录精确匹配
-            for file_path in base_path.rglob(full_filename):
+            matches = list(base_path.rglob(full_filename))
+            logger.debug(f"  全目录精确匹配: 找到 {len(matches)} 个匹配项")
+            for file_path in matches:
                 if file_path.is_file():
                     logger.info(f"找到附件文件（精确匹配）: {clean_filename} -> {file_path.name}")
                     info = _build_file_info(base_path, file_path)
@@ -330,16 +413,25 @@ def find_attachment_files(filename: str) -> List[dict]:
     # P1: 未命中时打印"根目录/全目录"候选 stem（限制 5 个）
     logger.warning(f"未找到附件文件或文件夹: {filename} (清理后: {clean_filename}, 搜索路径: {base_path})")
     
-    # 列出根目录下可能的候选文件（限制 5 个）
+    # 列出根目录下所有文件（用于调试）
     try:
+        root_files = [f.name for f in base_path.iterdir() if f.is_file()]
+        logger.debug(f"  根目录文件列表（前10个）: {root_files[:10]}")
+        
+        # 查找包含关键字的文件
         root_candidates = []
         for file_path in base_path.iterdir():
-            if file_path.is_file() and clean_filename.lower() in file_path.stem.lower():
-                root_candidates.append(file_path.stem)
-                if len(root_candidates) >= 5:
-                    break
+            if file_path.is_file():
+                stem_lower = file_path.stem.lower()
+                clean_lower = clean_filename.lower()
+                if clean_lower in stem_lower or stem_lower in clean_lower:
+                    root_candidates.append(f"{file_path.stem}{file_path.suffix}")
+                    if len(root_candidates) >= 5:
+                        break
         if root_candidates:
-            logger.debug(f"  根目录候选文件（stem）: {root_candidates}")
+            logger.info(f"  根目录候选文件: {root_candidates}")
+        else:
+            logger.debug(f"  根目录未找到包含 '{clean_filename}' 的文件")
     except Exception as e:
         logger.debug(f"  无法列出根目录候选文件: {str(e)}")
     
@@ -347,16 +439,50 @@ def find_attachment_files(filename: str) -> List[dict]:
     try:
         all_candidates = []
         for file_path in base_path.rglob("*"):
-            if file_path.is_file() and clean_filename.lower() in file_path.stem.lower():
-                all_candidates.append(file_path.stem)
-                if len(all_candidates) >= 5:
-                    break
-        if all_candidates and len(all_candidates) > len(root_candidates) if 'root_candidates' in locals() else True:
-            logger.debug(f"  全目录候选文件（stem）: {all_candidates}")
+            if file_path.is_file():
+                stem_lower = file_path.stem.lower()
+                clean_lower = clean_filename.lower()
+                if clean_lower in stem_lower or stem_lower in clean_lower:
+                    all_candidates.append(f"{file_path.stem}{file_path.suffix} (路径: {file_path.relative_to(base_path)})")
+                    if len(all_candidates) >= 5:
+                        break
+        if all_candidates:
+            logger.info(f"  全目录候选文件: {all_candidates}")
+        else:
+            logger.debug(f"  全目录未找到包含 '{clean_filename}' 的文件")
     except Exception as e:
         logger.debug(f"  无法列出全目录候选文件: {str(e)}")
     
     return []
+
+
+def find_column_by_variants(row: pd.Series, variants: List[str]) -> Optional[str]:
+    """通过多种变体查找列，支持忽略空格和大小写"""
+    # 先尝试精确匹配
+    for col_name in variants:
+        if col_name in row.index:
+            val = row.get(col_name)
+            # 检查是否为 nan 或 None
+            if pd.notna(val) and val is not None:
+                val_str = str(val).strip()
+                # 排除字符串 "nan"（pandas nan 转字符串后的结果）
+                if val_str and val_str.lower() != 'nan':
+                    return val_str
+    
+    # 如果精确匹配失败，尝试忽略空格和大小写的匹配
+    normalized_row_index = {str(col).strip().lower(): col for col in row.index}
+    for variant in variants:
+        normalized_variant = variant.strip().lower()
+        if normalized_variant in normalized_row_index:
+            col_name = normalized_row_index[normalized_variant]
+            val = row.get(col_name)
+            # 检查是否为 nan 或 None
+            if pd.notna(val) and val is not None:
+                val_str = str(val).strip()
+                # 排除字符串 "nan"（pandas nan 转字符串后的结果）
+                if val_str and val_str.lower() != 'nan':
+                    return val_str
+    return None
 
 
 def map_excel_row_to_article(row: pd.Series, source_file_name: str, sheet_name: str, row_index: int) -> Optional[dict]:
@@ -368,77 +494,79 @@ def map_excel_row_to_article(row: pd.Series, source_file_name: str, sheet_name: 
     # 读取字段（原样保留，不修改）
     # 注意：pandas 读取时，列名可能包含前后空格或特殊字符
     # 支持多种列名格式（带括号和不带括号）
-    serial_number = ""
-    for col_name in ["序号"]:
-        if col_name in row.index and pd.notna(row.get(col_name)):
-            serial_number = str(row.get(col_name)).strip()
-            break
+    serial_number = find_column_by_variants(row, ["序号"]) or ""
     
-    phenomenon = ""
-    # 尝试多种可能的列名（包括带括号和不带括号的变体）
-    for col_name in ["现象（问题）", "现象(问题)", "现象 （问题）", "现象 (问题)", "现象", "问题"]:
-        if col_name in row.index and pd.notna(row.get(col_name)):
-            val = row.get(col_name)
-            if val is not None and str(val).strip():
-                phenomenon = str(val).strip()
-                break
+    phenomenon = find_column_by_variants(row, ["现象（问题）", "现象(问题)", "现象 （问题）", "现象 (问题)", "现象", "问题", "故障现象"]) or ""
     
-    checkpoints = ""
-    for col_name in ["检查点（原因）", "检查点(原因)", "检查点 （原因）", "检查点 (原因)", "检查点", "原因"]:
-        if col_name in row.index and pd.notna(row.get(col_name)):
-            val = row.get(col_name)
-            if val is not None and str(val).strip():
-                checkpoints = str(val).strip()
-                break
+    checkpoints = find_column_by_variants(row, ["检查点（原因）", "检查点(原因)", "检查点 （原因）", "检查点 (原因)", "检查点", "原因"]) or ""
     
-    solution = ""
-    for col_name in ["维修对策（解决办法）", "维修对策(解决办法)", "维修对策 （解决办法）", "维修对策 (解决办法)", "对策", "维修对策", "解决办法", "解决方法"]:
-        if col_name in row.index and pd.notna(row.get(col_name)):
-            val = row.get(col_name)
-            if val is not None and str(val).strip():
-                solution = str(val).strip()
-                break
+    solution = find_column_by_variants(row, ["维修对策（解决办法）", "维修对策(解决办法)", "维修对策 （解决办法）", "维修对策 (解决办法)", "对策", "维修对策", "解决办法", "解决方法"]) or ""
     
-    video_reference = ""
-    for col_name in ["维修视频（附件）", "维修视频(附件)", "维修视频 （附件）", "维修视频 (附件)", "维修视频", "附件", "备注"]:
-        if col_name in row.index and pd.notna(row.get(col_name)):
-            val = row.get(col_name)
-            if val is not None and str(val).strip():
-                video_reference = str(val).strip()
-                break
+    video_reference = find_column_by_variants(row, ["维修视频（附件）", "维修视频(附件)", "维修视频 （附件）", "维修视频 (附件)", "维修视频", "附件", "备注"]) or ""
     
-    # 跳过空行（必须有现象（问题））
+    # 跳过空行和标题行（必须有现象（问题））
+    # 如果只有序号或型号等非必需字段，也跳过（避免将标题行或空行录入数据库）
     if not phenomenon:
         return None
     
-    # 1) title = 【YH400/YH500】 + 现象（问题）
-    title = f"【YH400/YH500】{phenomenon}".strip()
+    # 额外检查：如果现象（问题）的值就是列标题本身（如"现象(问题)"），则跳过
+    # 避免将标题行误当作数据行录入
+    title_keywords = ["现象", "问题", "检查点", "原因", "维修对策", "解决办法", "维修视频", "附件", "序号", "型号"]
+    if phenomenon in title_keywords or any(keyword in phenomenon for keyword in ["现象（问题）", "现象(问题)", "检查点（原因）", "维修对策（解决办法）"]):
+        logger.debug(f"跳过标题行或无效行: 现象={phenomenon}")
+        return None
+    
+    # 清理所有字段中的中括号标签（防止Excel单元格中本身就包含这些标签）
+    # 同时处理 nan 值：如果字段值是 "nan" 字符串，则清空
+    serial_number = clean_bracketed_labels(str(serial_number)) if serial_number and str(serial_number).lower() != 'nan' else ""
+    phenomenon = clean_bracketed_labels(phenomenon) if phenomenon and str(phenomenon).lower() != 'nan' else ""
+    checkpoints = clean_bracketed_labels(checkpoints) if checkpoints and str(checkpoints).lower() != 'nan' else ""
+    solution = clean_bracketed_labels(solution) if solution and str(solution).lower() != 'nan' else ""
+    video_reference = clean_bracketed_labels(video_reference) if video_reference and str(video_reference).lower() != 'nan' else ""
+    
+    # 1) title = 只保留现象（问题），不添加型号信息和中括号
+    title = phenomenon.strip()
+    # 再次清理，确保没有任何中括号标签
+    title = clean_bracketed_labels(title)
     if not title:
         return None
     
-    # 2) question_text 必须保留原字段名与原文
-    question_parts = []
-    if serial_number:
-        question_parts.append(f"【序号】{serial_number}")
-    if phenomenon:
-        question_parts.append(f"【现象（问题）】{phenomenon}")
-    question_text = "\n".join(question_parts) if question_parts else None
+    # 2) question_text = 只保留现象（问题）的原始内容，不添加序号、列标题和中括号
+    # 序号不录入数据库，只保留现象内容
+    question_text = None
+    if phenomenon and phenomenon.strip():
+        cleaned_phenomenon = clean_bracketed_labels(phenomenon.strip())
+        if cleaned_phenomenon:
+            question_text = cleaned_phenomenon
+    # 最终清理，确保没有任何中括号标签
+    if question_text:
+        question_text = clean_bracketed_labels(question_text)
     
-    # 3) cause_text = 原样写入 检查点（原因）（保留编号/换行）
-    cause_text = None
-    if checkpoints:
-        cause_text = f"【检查点（原因）】\n{checkpoints}"
+    # 3) cause_text = 只保留检查点（原因）的原始内容，不添加列标题和中括号
+    cause_text = checkpoints.strip() if checkpoints and checkpoints.strip() else None
+    # 再次清理，确保没有任何中括号标签
+    if cause_text:
+        cause_text = clean_bracketed_labels(cause_text)
     
-    # 4) solution_text = 原样写入 维修对策（解决办法）（保留编号/换行）
+    # 4) solution_text = 保留维修对策（解决办法）和维修视频（附件）的原始内容，不添加列标题和中括号
+    # 注意：维修视频（附件）的内容会添加到 solution_text 中，这样即使没有匹配到附件文件，用户也能看到参考信息
+    # 同时，如果匹配到附件文件，也会创建附件记录，在附件部分显示
     solution_parts = []
-    if solution:
-        solution_parts.append(f"【维修对策（解决办法）】\n{solution}")
+    if solution and solution.strip():
+        cleaned_solution = clean_bracketed_labels(solution.strip())
+        if cleaned_solution:
+            solution_parts.append(cleaned_solution)
     
-    # 5) 维修视频（附件）：如果是文本，追加到 solution_text
-    if video_reference:
-        solution_parts.append(f"【维修视频（附件）】\n{video_reference}")
+    # 5) 维修视频（附件）：添加到 solution_text 中（即使没有匹配到附件文件，用户也能看到参考信息）
+    if video_reference and video_reference.strip():
+        cleaned_video = clean_bracketed_labels(video_reference.strip())
+        if cleaned_video:
+            solution_parts.append(cleaned_video)
     
     solution_text = "\n\n".join(solution_parts) if solution_parts else None
+    # 最终清理，确保没有任何中括号标签
+    if solution_text:
+        solution_text = clean_bracketed_labels(solution_text)
     
     # 6) scope_json 必须包含：设备系列、来源文件、sheet、行号
     scope_data = {
@@ -560,11 +688,28 @@ def map_excel_row_to_article(row: pd.Series, source_file_name: str, sheet_name: 
                 unique_attachments.append(att)
         attachment_info = unique_attachments if unique_attachments else None
     
+    # 最终检查：确保所有字段都没有中括号标签（最后一次清理）
+    final_title = clean_bracketed_labels(title) if title else ""
+    final_question_text = clean_bracketed_labels(question_text) if question_text else None
+    final_cause_text = clean_bracketed_labels(cause_text) if cause_text else None
+    final_solution_text = clean_bracketed_labels(solution_text) if solution_text else None
+    
+    # 记录清理日志（仅在前几次导入时记录，避免日志过多）
+    if row_index <= 3:
+        logger.info(f"[行 {row_index}] 清理前 -> 清理后:")
+        logger.info(f"  title: {title[:50]}... -> {final_title[:50]}...")
+        if question_text:
+            logger.info(f"  questionText: {question_text[:50]}... -> {final_question_text[:50] if final_question_text else 'None'}...")
+        if cause_text:
+            logger.info(f"  causeText: {cause_text[:50]}... -> {final_cause_text[:50] if final_cause_text else 'None'}...")
+        if solution_text:
+            logger.info(f"  solutionText: {solution_text[:50]}... -> {final_solution_text[:50] if final_solution_text else 'None'}...")
+    
     return {
-        "title": title,
-        "questionText": question_text,
-        "causeText": cause_text,
-        "solutionText": solution_text,
+        "title": final_title,
+        "questionText": final_question_text,
+        "causeText": final_cause_text,
+        "solutionText": final_solution_text,
         "scopeJson": scope_json,
         "tags": ", ".join(tags),
         "createdBy": "系统导入",
@@ -602,9 +747,25 @@ async def import_excel(file: UploadFile = File(...)):
         
         # 验证必需字段（支持多种列名）
         # 故障现象列名可能为：故障现象、现象（问题）、现象、问题
-        fault_phenomenon_columns = ["故障现象", "现象（问题）", "现象(问题)", "现象", "问题"]
-        has_fault_phenomenon = any(col in df.columns for col in fault_phenomenon_columns)
+        fault_phenomenon_columns = ["故障现象", "现象（问题）", "现象(问题)", "现象 （问题）", "现象 (问题)", "现象", "问题"]
+        
+        # 改进的列名匹配：支持忽略空格、大小写等
+        def normalize_column_name(col_name: str) -> str:
+            """标准化列名：去除前后空格，统一大小写"""
+            return str(col_name).strip().lower()
+        
+        # 标准化所有列名和匹配列表
+        normalized_columns = {normalize_column_name(col): col for col in df.columns}
+        normalized_fault_phenomenon = [normalize_column_name(col) for col in fault_phenomenon_columns]
+        
+        # 检查是否有匹配的列
+        has_fault_phenomenon = any(norm_col in normalized_columns for norm_col in normalized_fault_phenomenon)
         header_row = 0  # 记录 header 行号
+        
+        logger.info(f"第一行读取到的列名: {list(df.columns)}")
+        logger.info(f"标准化后的列名: {list(normalized_columns.keys())}")
+        logger.info(f"期望的标准化列名: {normalized_fault_phenomenon}")
+        logger.info(f"匹配结果: {has_fault_phenomenon}")
         
         # 如果第一行没有找到必需字段，尝试从第二行读取（跳过标题行）
         if not has_fault_phenomenon:
@@ -613,19 +774,55 @@ async def import_excel(file: UploadFile = File(...)):
             df = pd.read_excel(excel_file, engine='openpyxl', header=1)
             header_row = 1  # 更新 header 行号
             
+            # 重新标准化列名
+            normalized_columns = {normalize_column_name(col): col for col in df.columns}
+            normalized_fault_phenomenon = [normalize_column_name(col) for col in fault_phenomenon_columns]
+            logger.info(f"第二行读取到的列名: {list(df.columns)}")
+            logger.info(f"标准化后的列名: {list(normalized_columns.keys())}")
+            logger.info(f"期望的标准化列名: {normalized_fault_phenomenon}")
+            
             # 再次验证
-            has_fault_phenomenon = any(col in df.columns for col in fault_phenomenon_columns)
+            has_fault_phenomenon = any(norm_col in normalized_columns for norm_col in normalized_fault_phenomenon)
+            logger.info(f"匹配结果: {has_fault_phenomenon}")
+            
+            # 如果仍然没有匹配，尝试更宽松的匹配（只检查是否包含关键字）
             if not has_fault_phenomenon:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"缺少必需字段: 请包含以下任一列名 - {', '.join(fault_phenomenon_columns)}"
+                logger.info("尝试更宽松的匹配：检查列名是否包含'现象'或'问题'关键字")
+                for col in df.columns:
+                    col_lower = str(col).strip().lower()
+                    if '现象' in col_lower or '问题' in col_lower or '故障' in col_lower:
+                        logger.info(f"找到可能的匹配列: '{col}' (标准化: '{col_lower}')")
+                        has_fault_phenomenon = True
+                        break
+            
+            if not has_fault_phenomenon:
+                # 提供更详细的错误信息
+                error_msg = (
+                    f"缺少必需字段: 请包含以下任一列名 - {', '.join(fault_phenomenon_columns)}\n"
+                    f"实际读取到的列名: {', '.join(df.columns)}\n"
+                    f"提示: 请确保Excel文件包含'现象（问题）'、'现象(问题)'、'现象 (问题)'或'现象'列"
                 )
+                logger.error(error_msg)
+                raise HTTPException(status_code=400, detail=error_msg)
         
         if df.empty:
             raise HTTPException(status_code=400, detail="Excel 文件为空")
         
         logger.info(f"读取到 {len(df)} 行数据")
-        logger.info(f"列名: {list(df.columns)}")
+        logger.info(f"最终使用的列名: {list(df.columns)}")
+        
+        # 明确过滤掉"型号"列（如果存在），避免录入数据库
+        columns_to_drop = []
+        for col in df.columns:
+            col_str = str(col).strip()
+            # 如果列名包含"型号"，则标记为删除
+            if "型号" in col_str:
+                columns_to_drop.append(col)
+                logger.debug(f"检测到'型号'列，将忽略: {col_str}")
+        
+        if columns_to_drop:
+            df = df.drop(columns=columns_to_drop)
+            logger.info(f"已过滤 {len(columns_to_drop)} 个'型号'相关列")
         
         # 获取 sheet 名称（如果可能）
         sheet_name = "Sheet1"  # 默认值

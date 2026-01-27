@@ -8,10 +8,11 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "vue": "^3.4.0",
-    "vue-router": "^4.2.5",
+    "axios": "^1.13.3",
     "naive-ui": "^2.38.0",
-    "nanoid": "^5.0.4"
+    "nanoid": "^5.0.4",
+    "vue": "^3.4.0",
+    "vue-router": "^4.2.5"
   },
   "devDependencies": {
     "@vitejs/plugin-vue": "^5.0.0",

@@ -73,6 +73,7 @@ export interface AIResponseMeta {
   }
   alarmCode?: string
   issueCategory: string
+  relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
 }
 
 // 工单
@@ -152,4 +153,13 @@ export interface AIResponse {
   }[]
   shouldEscalate: boolean
   shortAnswerText: string
+  relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
+}
+
+// 相关文章（用于显示其他可能匹配的问题）
+export interface RelatedArticle {
+  id: number
+  title: string
+  questionText?: string
+  excerpt?: string
 }

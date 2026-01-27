@@ -4,6 +4,7 @@ using ai_hub_service.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Logging;
 
 namespace ai_hub_service.Services;
 
@@ -14,11 +15,16 @@ public class KnowledgeArticleService : IKnowledgeArticleService
 {
     private readonly ApplicationDbContext _context;
     private readonly IIndexService _indexService;
+    private readonly ILogger<KnowledgeArticleService> _logger;
 
-    public KnowledgeArticleService(ApplicationDbContext context, IIndexService indexService)
+    public KnowledgeArticleService(
+        ApplicationDbContext context, 
+        IIndexService indexService,
+        ILogger<KnowledgeArticleService> logger)
     {
         _context = context;
         _indexService = indexService;
+        _logger = logger;
     }
 
     /// <summary>
@@ -51,6 +57,11 @@ public class KnowledgeArticleService : IKnowledgeArticleService
     {
         try
         {
+            // 记录搜索请求日志
+            _logger.LogInformation(
+                "搜索知识条目 - TenantId: {TenantId}, Keyword: {Keyword}, Status: {Status}, PageIndex: {PageIndex}, PageSize: {PageSize}",
+                tenantId, searchDto.Keyword, searchDto.Status, searchDto.PageIndex, searchDto.PageSize);
+
             // 验证分页参数
             if (searchDto.PageIndex < 1)
                 searchDto.PageIndex = 1;
@@ -63,19 +74,26 @@ public class KnowledgeArticleService : IKnowledgeArticleService
                 .Where(a => a.TenantId == tenantId && a.DeletedAt == null) // 只查询未删除的记录
                 .AsQueryable();
 
-            // 关键词搜索（title/question/solution）
+            // 关键词搜索（title/question/solution）- 改进：支持更灵活的匹配
             if (!string.IsNullOrWhiteSpace(searchDto.Keyword))
             {
                 var keyword = searchDto.Keyword.Trim();
+                _logger.LogInformation("搜索关键词: {Keyword}", keyword);
+                
+                // 使用EF.Functions.Like支持更灵活的匹配（SQL Server，大小写不敏感）
+                // 同时支持完整匹配和部分匹配
                 query = query.Where(a =>
-                    a.Title.Contains(keyword) ||
-                    (a.QuestionText != null && a.QuestionText.Contains(keyword)) ||
-                    (a.SolutionText != null && a.SolutionText.Contains(keyword)));
+                    EF.Functions.Like(a.Title, $"%{keyword}%") ||
+                    (a.QuestionText != null && EF.Functions.Like(a.QuestionText, $"%{keyword}%")) ||
+                    (a.SolutionText != null && EF.Functions.Like(a.SolutionText, $"%{keyword}%")));
+                
+                _logger.LogInformation("应用关键词过滤: {Keyword}", keyword);
             }
 
             // 状态过滤
             if (!string.IsNullOrWhiteSpace(searchDto.Status))
             {
+                _logger.LogInformation("过滤状态: {Status}", searchDto.Status);
                 query = query.Where(a => a.Status == searchDto.Status);
             }
 
@@ -93,6 +111,7 @@ public class KnowledgeArticleService : IKnowledgeArticleService
 
             // 获取总数
             var totalCount = await query.CountAsync();
+            _logger.LogInformation("搜索到 {TotalCount} 条记录", totalCount);
 
             // 分页
             var articles = await query
@@ -100,6 +119,10 @@ public class KnowledgeArticleService : IKnowledgeArticleService
                 .Skip((searchDto.PageIndex - 1) * searchDto.PageSize)
                 .Take(searchDto.PageSize)
                 .ToListAsync();
+
+            _logger.LogInformation("返回 {Count} 条记录，ID列表: {Ids}", 
+                articles.Count, 
+                string.Join(", ", articles.Select(a => a.Id)));
 
             // 为每个文章加载未删除的附件
             foreach (var article in articles)
@@ -111,13 +134,16 @@ public class KnowledgeArticleService : IKnowledgeArticleService
                     .LoadAsync();
             }
 
-            return new PagedResultDto<KnowledgeArticleDto>
+            var result = new PagedResultDto<KnowledgeArticleDto>
             {
                 Items = articles.Select(MapToDto).ToList(),
                 TotalCount = totalCount,
                 PageIndex = searchDto.PageIndex,
                 PageSize = searchDto.PageSize
             };
+
+            _logger.LogInformation("搜索完成，返回 {ItemCount} 条结果", result.Items.Count);
+            return result;
         }
         catch (Exception ex)
         {

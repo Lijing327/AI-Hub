@@ -62,6 +62,18 @@
           </div>
         </div>
       </div>
+
+      <!-- 其他可能匹配的问题 -->
+      <div class="section" v-if="relatedArticles && relatedArticles.length > 0">
+        <div class="section-title">其他可能匹配的问题</div>
+        <div class="related-articles">
+          <div v-for="article in relatedArticles" :key="article.id" class="related-article">
+            <div class="article-title">{{ article.title }}</div>
+            <div class="article-excerpt" v-if="article.excerpt">{{ article.excerpt }}</div>
+            <div class="article-question" v-else-if="article.questionText">{{ article.questionText }}</div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div class="card-footer" v-if="!readonly">
@@ -76,7 +88,7 @@
 
 <script setup lang="ts">
 import { defineProps, defineEmits, withDefaults } from 'vue'
-import type { AIResponseMeta } from '@/models/types'
+import type { AIResponseMeta, RelatedArticle } from '@/models/types'
 
 interface Props {
   meta: AIResponseMeta
@@ -84,6 +96,7 @@ interface Props {
     temporary: string
     final: string
   }
+  relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
   readonly?: boolean // 只读模式，用于会话详情页
 }
 
@@ -299,6 +312,40 @@ function handleFeedback(isResolved: boolean) {
 }
 
 .doc-excerpt {
+  font-size: 12px;
+  color: #666;
+  line-height: 1.5;
+}
+
+.related-articles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.related-article {
+  padding: 12px;
+  background: #f0f9ff;
+  border-radius: 6px;
+  border-left: 3px solid #1890ff;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.related-article:hover {
+  background: #e6f7ff;
+  transform: translateX(4px);
+}
+
+.article-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1890ff;
+  margin-bottom: 6px;
+}
+
+.article-excerpt,
+.article-question {
   font-size: 12px;
   color: #666;
   line-height: 1.5;

@@ -18,6 +18,7 @@
           v-if="message.role === 'assistant' && getAIMeta(message.messageId)"
           :meta="getAIMeta(message.messageId)!"
           :solution="getSolution(message.messageId)"
+          :related-articles="getRelatedArticles(message.messageId)"
           :readonly="false"
           @create-ticket="handleCreateTicket(message.messageId)"
           @feedback="handleFeedback(message.messageId, $event)"
@@ -84,8 +85,8 @@ import AiAnswerCard from '@/components/AiAnswerCard.vue'
 import QuickQuestions from '@/components/QuickQuestions.vue'
 import DevicePicker from '@/components/DevicePicker.vue'
 import { sessionRepo, messageRepo, aiMetaRepo, ticketRepo, ticketLogRepo, deviceRepo, feedbackRepo } from '@/store/repositories'
-import { generateAIResponse } from '@/ai/mock_ai'
-import type { ChatSession, ChatMessage, Device, AIResponseMeta, Ticket, TicketLog } from '@/models/types'
+import { generateAIResponse } from '@/ai/ai_service'
+import type { ChatSession, ChatMessage, Device, AIResponseMeta, Ticket, TicketLog, RelatedArticle } from '@/models/types'
 import demoQuestionsData from '@/mock/demo_questions.json'
 
 const route = useRoute()
@@ -115,6 +116,12 @@ function getSolution(messageId: string): { temporary: string; final: string } {
   const meta = getAIMeta(messageId)
   if (!meta || !meta.solution) return { temporary: '', final: '' }
   return meta.solution
+}
+
+// 获取相关文章
+function getRelatedArticles(messageId: string): RelatedArticle[] | undefined {
+  const meta = getAIMeta(messageId)
+  return meta?.relatedArticles
 }
 
 onMounted(async () => {
@@ -214,6 +221,14 @@ async function sendMessage() {
     })
     messages.value.push(aiMessage)
 
+    // 转换相关文章格式
+    const relatedArticles: RelatedArticle[] | undefined = aiResponse.relatedArticles?.map(article => ({
+      id: article.id,
+      title: article.title,
+      questionText: article.questionText,
+      excerpt: article.questionText || article.title
+    }))
+
     // 保存 AI 元数据
     const aiMeta = aiMetaRepo.create({
       sessionId: currentSessionId.value,
@@ -225,7 +240,8 @@ async function sendMessage() {
       citedDocs: aiResponse.citedDocs,
       solution: aiResponse.solution,
       alarmCode: aiResponse.alarmCode,
-      issueCategory: aiResponse.issueCategory
+      issueCategory: aiResponse.issueCategory,
+      relatedArticles
     })
     aiMetas.value.push(aiMeta)
 
