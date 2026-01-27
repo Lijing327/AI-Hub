@@ -1,0 +1,27 @@
+[
+  {
+    "text": "设备报警码 E101，怎么处理？",
+    "deviceModelHint": "YX-3000",
+    "alarmCode": "E101"
+  },
+  {
+    "text": "送料系统不进料，一直卡住",
+    "deviceModelHint": "YX-5000"
+  },
+  {
+    "text": "压力值不稳定，一直在波动",
+    "deviceModelHint": "YX-6000"
+  },
+  {
+    "text": "报警码 E205 是什么意思？",
+    "alarmCode": "E205"
+  },
+  {
+    "text": "设备温度过高，报警了",
+    "deviceModelHint": "YX-3000"
+  },
+  {
+    "text": "报警码 E308，压力系统异常",
+    "alarmCode": "E308"
+  }
+]

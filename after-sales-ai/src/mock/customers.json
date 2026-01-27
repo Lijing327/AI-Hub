@@ -1,0 +1,18 @@
+[
+  {
+    "customerId": "cust_001",
+    "name": "华东制造有限公司",
+    "contactName": "张经理",
+    "phone": "13800138001",
+    "region": "华东区",
+    "createdAt": "2024-01-15T10:00:00Z"
+  },
+  {
+    "customerId": "cust_002",
+    "name": "华南精密工业股份有限公司",
+    "contactName": "李工程师",
+    "phone": "13900139002",
+    "region": "华南区",
+    "createdAt": "2024-02-20T14:30:00Z"
+  }
+]

@@ -1,0 +1,155 @@
+/**
+ * 数据结构类型定义
+ */
+
+// 客户信息
+export interface Customer {
+  customerId: string
+  name: string
+  contactName: string
+  phone: string
+  region: string
+  createdAt: string
+}
+
+// 设备信息
+export interface Device {
+  deviceId: string
+  customerId: string
+  model: string
+  serialNo: string
+  controllerType: string
+  installDate: string
+  status: '正常' | '故障' | '维护中'
+}
+
+// 聊天会话
+export interface ChatSession {
+  sessionId: string
+  customerId: string
+  deviceId: string
+  channel: string
+  startTime: string
+  endTime?: string
+  issueCategory?: string
+  alarmCode?: string
+  resolvedStatus: '未反馈' | '已解决' | '未解决'
+  escalatedToTicket: boolean
+  summary?: string
+}
+
+// 聊天消息
+export interface ChatMessage {
+  messageId: string
+  sessionId: string
+  role: 'user' | 'assistant' | 'system'
+  content: string
+  attachments?: string[]
+  createdAt: string
+}
+
+// AI 响应元数据
+export interface AIResponseMeta {
+  metaId: string
+  sessionId: string
+  relatedMessageId: string
+  confidence: number
+  topCauses: string[]
+  steps: {
+    title: string
+    action: string
+    expect: string
+    next: string
+  }[]
+  safetyFlag: boolean
+  citedDocs: {
+    kbId: string
+    title: string
+    excerpt: string
+  }[]
+  solution: {
+    temporary: string
+    final: string
+  }
+  alarmCode?: string
+  issueCategory: string
+}
+
+// 工单
+export interface Ticket {
+  ticketId: string
+  customerId: string
+  deviceId: string
+  sessionId: string
+  title: string
+  description: string
+  status: '待处理' | '处理中' | '已解决' | '已关闭'
+  priority: '低' | '中' | '高' | '紧急'
+  assignee?: string
+  createdAt: string
+  closedAt?: string
+  finalSolutionSummary?: string
+}
+
+// 工单日志
+export interface TicketLog {
+  logId: string
+  ticketId: string
+  action: string
+  content: string
+  operator: string
+  createdAt: string
+}
+
+// 反馈
+export interface Feedback {
+  feedbackId: string
+  sessionId: string
+  ticketId?: string
+  score?: number
+  isResolved?: boolean
+  comment?: string
+  createdAt: string
+}
+
+// 知识库样本
+export interface KbSample {
+  kbId: string
+  title: string
+  modelTags: string[]
+  docType: string
+  excerpt: string
+}
+
+// 演示问题
+export interface DemoQuestion {
+  text: string
+  deviceModelHint?: string
+  alarmCode?: string
+}
+
+// AI 响应结果
+export interface AIResponse {
+  issueCategory: string
+  alarmCode?: string
+  confidence: number
+  topCauses: string[]
+  steps: {
+    title: string
+    action: string
+    expect: string
+    next: string
+  }[]
+  solution: {
+    temporary: string
+    final: string
+  }
+  safetyTip: string
+  citedDocs: {
+    kbId: string
+    title: string
+    excerpt: string
+  }[]
+  shouldEscalate: boolean
+  shortAnswerText: string
+}

@@ -1,0 +1,38 @@
+[
+  {
+    "deviceId": "dev_001",
+    "customerId": "cust_001",
+    "model": "YX-3000",
+    "serialNo": "YX3000123456",
+    "controllerType": "V2.5",
+    "installDate": "2023-06-10",
+    "status": "正常"
+  },
+  {
+    "deviceId": "dev_002",
+    "customerId": "cust_001",
+    "model": "YX-5000",
+    "serialNo": "YX5000789012",
+    "controllerType": "V3.0",
+    "installDate": "2023-11-20",
+    "status": "正常"
+  },
+  {
+    "deviceId": "dev_003",
+    "customerId": "cust_002",
+    "model": "YX-3000",
+    "serialNo": "YX3000345678",
+    "controllerType": "V2.5",
+    "installDate": "2023-08-15",
+    "status": "正常"
+  },
+  {
+    "deviceId": "dev_004",
+    "customerId": "cust_002",
+    "model": "YX-6000",
+    "serialNo": "YX6000567890",
+    "controllerType": "V3.1",
+    "installDate": "2024-01-05",
+    "status": "正常"
+  }
+]
