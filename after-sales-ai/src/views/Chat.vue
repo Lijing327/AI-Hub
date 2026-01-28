@@ -14,8 +14,9 @@
     <div class="chat-messages" ref="messagesContainer">
       <div v-for="message in messages" :key="message.messageId" class="message-wrapper">
         <ChatMessageBubble :message="message" />
+        <!-- 仅在有结构化回复时展示故障排查卡片；conversation 模式（如「你是谁」）只展示对话气泡 -->
         <AiAnswerCard
-          v-if="message.role === 'assistant' && getAIMeta(message.messageId)"
+          v-if="message.role === 'assistant' && shouldShowAnswerCard(message.messageId)"
           :meta="getAIMeta(message.messageId)!"
           :solution="getSolution(message.messageId)"
           :related-articles="getRelatedArticles(message.messageId)"
@@ -41,11 +42,7 @@
 
     <!-- 底部输入区 -->
     <div class="chat-input-area">
-      <QuickQuestions
-        v-if="demoQuestions.length > 0"
-        :questions="demoQuestions"
-        @select="handleQuickQuestion"
-      />
+      <!-- 快捷问题已移除，不再显示模拟数据 -->
       <div class="input-row">
         <input
           v-model="inputText"
@@ -82,12 +79,12 @@ import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChatMessageBubble from '@/components/ChatMessageBubble.vue'
 import AiAnswerCard from '@/components/AiAnswerCard.vue'
-import QuickQuestions from '@/components/QuickQuestions.vue'
+// import QuickQuestions from '@/components/QuickQuestions.vue' // 已移除快捷问题显示
 import DevicePicker from '@/components/DevicePicker.vue'
 import { sessionRepo, messageRepo, aiMetaRepo, ticketRepo, ticketLogRepo, deviceRepo, feedbackRepo } from '@/store/repositories'
 import { generateAIResponse } from '@/ai/ai_service'
 import type { ChatSession, ChatMessage, Device, AIResponseMeta, Ticket, TicketLog, RelatedArticle } from '@/models/types'
-import demoQuestionsData from '@/mock/demo_questions.json'
+// import demoQuestionsData from '@/mock/demo_questions.json' // 已移除演示问题
 
 const route = useRoute()
 const router = useRouter()
@@ -99,7 +96,7 @@ const device = ref<Device | null>(null)
 const allDevices = ref<Device[]>([])
 const messages = ref<ChatMessage[]>([])
 const aiMetas = ref<AIResponseMeta[]>([])
-const demoQuestions = ref(demoQuestionsData)
+// const demoQuestions = ref(demoQuestionsData) // 已移除演示问题
 const inputText = ref('')
 const showDevicePicker = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
@@ -109,6 +106,12 @@ const errorMessage = ref<string | null>(null)
 // 获取 AI 元数据
 function getAIMeta(messageId: string): AIResponseMeta | null {
   return aiMetas.value.find((m) => m.relatedMessageId === messageId) || null
+}
+
+// 是否展示故障排查卡片：有 AI 元数据且非「仅对话」模式时展示
+function shouldShowAnswerCard(messageId: string): boolean {
+  const meta = getAIMeta(messageId)
+  return meta != null && meta.replyMode !== 'conversation'
 }
 
 // 获取解决方案（从 AI 响应中提取）
@@ -241,7 +244,8 @@ async function sendMessage() {
       solution: aiResponse.solution,
       alarmCode: aiResponse.alarmCode,
       issueCategory: aiResponse.issueCategory,
-      relatedArticles
+      relatedArticles,
+      replyMode: aiResponse.replyMode
     })
     aiMetas.value.push(aiMeta)
 
@@ -271,10 +275,11 @@ async function sendMessage() {
   }
 }
 
-function handleQuickQuestion(question: string) {
-  inputText.value = question
-  sendMessage()
-}
+// function handleQuickQuestion(question: string) {
+//   inputText.value = question
+//   sendMessage()
+// }
+// 已移除快捷问题功能
 
 function handleCreateTicket(messageId: string) {
   if (!device.value || !currentSessionId.value) return

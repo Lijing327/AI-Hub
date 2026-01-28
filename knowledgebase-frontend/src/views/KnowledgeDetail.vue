@@ -34,10 +34,10 @@
             {{ formatDate(item.createdAt) }}
           </el-descriptions-item>
           <el-descriptions-item label="更新时间">
-            {{ formatDate(item.updatedAt) || '-' }}
+            {{ item.updatedAt ? formatDate(item.updatedAt) : '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="发布时间">
-            {{ formatDate(item.publishedAt) || '-' }}
+            {{ item.publishedAt ? formatDate(item.publishedAt) : '-' }}
           </el-descriptions-item>
           <el-descriptions-item label="标签" :span="2">
             {{ item.tags || '-' }}
@@ -77,9 +77,9 @@
 
         <div class="content-section">
           <h3>附件</h3>
-          <div v-if="item.attachments && item.attachments.length > 0" class="attachments">
+          <div v-if="item.assets && item.assets.length > 0" class="attachments">
             <div
-              v-for="att in item.attachments"
+              v-for="att in item.assets"
               :key="att.id"
               class="attachment-item"
             >
@@ -94,7 +94,7 @@
               <div v-if="att.fileType === 'image' || att.assetType === 'image'" class="image-preview">
                 <el-image
                   :src="getFileUrl(att.fileUrl || att.url)"
-                  :preview-src-list="getImagePreviewList(item.attachments)"
+                  :preview-src-list="getImagePreviewList(item.assets)"
                   fit="cover"
                   style="width: 200px; height: 200px; margin-top: 10px;"
                   :lazy="true"
@@ -122,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Picture } from '@element-plus/icons-vue'
@@ -203,14 +203,6 @@ const formatDate = (dateStr: string) => {
   return new Date(dateStr).toLocaleString('zh-CN')
 }
 
-const formatJson = (jsonStr: string) => {
-  try {
-    return JSON.stringify(JSON.parse(jsonStr), null, 2)
-  } catch {
-    return jsonStr
-  }
-}
-
 // 解析适用范围 JSON 为对象
 const parseScopeJson = (jsonStr: string | null | undefined): Record<string, string> => {
   if (!jsonStr || jsonStr.trim() === '') {
@@ -263,11 +255,12 @@ const getImagePreviewList = (attachments: AttachmentDto[] | undefined): string[]
 }
 
 // 图片加载错误处理
-const handleImageError = (error: any) => {
-  console.error('图片加载失败:', error)
-  console.error('原始URL:', item.value?.attachments?.find(a => a.fileType === 'image')?.fileUrl)
-  console.error('处理后的URL:', item.value?.attachments?.find(a => a.fileType === 'image')?.fileUrl ? getFileUrl(item.value.attachments.find(a => a.fileType === 'image')?.fileUrl) : 'N/A')
-  // 可以在这里添加重试逻辑或显示默认图片
+const handleImageError = (_error: unknown) => {
+  const assets = item.value?.assets
+  const imageAsset = assets?.find((a: AttachmentDto) => a.fileType === 'image' || a.assetType === 'image')
+  console.error('图片加载失败')
+  console.error('原始URL:', imageAsset?.fileUrl ?? imageAsset?.url)
+  console.error('处理后的URL:', imageAsset ? getFileUrl(imageAsset.fileUrl ?? imageAsset.url) : 'N/A')
 }
 
 onMounted(() => {

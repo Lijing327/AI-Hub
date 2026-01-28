@@ -1,8 +1,9 @@
 #!/bin/bash
 # Python 服务启动脚本
 # 使用 uvicorn 启动服务（推荐方式）
+# 入口为 app.main:app，即 uvicorn app.main:app
 
-echo "启动 AI Hub Excel 导入服务..."
+echo "启动 AI Hub 服务..."
 
 # 检查虚拟环境
 if [ ! -f ".venv/bin/python" ]; then
@@ -16,5 +17,5 @@ if [ ! -f ".env" ]; then
     echo "建议: 复制 .env.example 为 .env 并配置"
 fi
 
-# 启动服务
-.venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+# 启动服务（入口：app.main:app）
+.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000

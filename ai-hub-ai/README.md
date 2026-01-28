@@ -35,6 +35,8 @@ DEFAULT_TENANT=default
 
 **重要**：`INTERNAL_TOKEN` 必须与 .NET 后端 `appsettings.json` 中的 `InternalToken` 一致。
 
+**可选 - DeepSeek AI 兜底**：在 `.env` 中配置 `DEEPSEEK_API_KEY`（及可选 `DEEPSEEK_BASE_URL`、`DEEPSEEK_MODEL`）后，当知识库不可用（如 .NET 返回 502/503/超时）或搜索无结果时，会调用 DeepSeek 生成简要排查建议。未配置时仅返回“无法匹配”等提示。接口与地址：`https://api.deepseek.com/v1/chat/completions`，模型：`deepseek-chat`。
+
 ## 运行
 
 ### 方式 1：使用启动脚本（推荐）
@@ -52,21 +54,17 @@ chmod +x start.sh
 
 ### 方式 2：直接使用 uvicorn 命令
 
+入口为 `app.main:app`（企业级分层结构，逻辑在 `app/` 目录下）。
+
 ```bash
 # 开发模式（推荐）
-.venv\Scripts\python.exe -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # 或 Linux/Mac
-.venv/bin/python -m uvicorn main:app --reload --host 0.0.0.0 --port 8000
+.venv/bin/python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # 生产模式
-uvicorn main:app --host 0.0.0.0 --port 8000
-```
-
-### 方式 3：直接运行 main.py（不推荐）
-
-```bash
-.venv\Scripts\python.exe main.py
+uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
 **注意**：如果端口 8000 被占用，可以：
@@ -157,6 +155,50 @@ with open("YH系列造型机常见故障及处置明细.xlsx", "rb") as f:
     print(response.json())
 ```
 
+## 项目结构（企业级分层）
+
+- `app/main.py`：应用入口，仅装配路由、中间件、异常处理与配置，无业务逻辑
+- `app/api/v1/`：路由（health、import_excel、attachments、chat）
+- `app/services/`：业务逻辑（Excel 导入、智能客服、附件查找）
+- `app/clients/`：外部调用（.NET 后端客户端）
+- `app/schemas/`：请求/响应 DTO
+- `app/core/`：配置、日志、异常、中间件
+- `docs/`：附件策略、流程说明、命名规范等文档（如 `ATTACHMENT_*.md`、`FILE_NAMING_GUIDE.md`）
+
+## 向量能力闭环
+
+### 功能说明
+
+从 SQL Server 读取 `kb_article` 表，按规则拆分（q/c/t），生成 embedding，写入 Chroma 向量库，提供语义检索接口。
+
+### 配置要求
+
+1. **SQL Server 连接**：配置 `SQLSERVER_DSN`（Windows 需安装 ODBC Driver 17 for SQL Server）
+2. **Embedding 提供者**：`EMBEDDING_PROVIDER=fake`（本地伪向量，用于联调）或 `openai`（需配置 `OPENAI_API_KEY`）
+3. **Chroma 向量库**：自动创建持久化目录（`CHROMA_PERSIST_DIR`）
+
+### 接口
+
+- `GET /api/v1/health` - 健康检查
+- `POST /api/v1/ingest/article/{article_id}` - 重建单条向量
+- `POST /api/v1/query` - 语义检索（返回 `article_id` 列表，.NET 回表取 `solution_text` + 附件）
+
+### 使用流程
+
+1. **启动服务**（确保 SQL Server 可访问）
+2. **重建向量**：`POST /api/v1/ingest/article/601`（601 为知识库中的 article_id）
+3. **语义检索**：`POST /api/v1/query`，body: `{"tenant_id": "default", "query": "下芯轴不动作怎么办", "top_k": 5}`
+
+### 从 fake 切到 OpenAI
+
+修改 `.env`：
+```env
+EMBEDDING_PROVIDER=openai
+OPENAI_API_KEY=你的key
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+```
+重启服务即可。
+
 ## 注意事项
 
 1. 确保 .NET 后端服务已启动
@@ -165,3 +207,6 @@ with open("YH系列造型机常见故障及处置明细.xlsx", "rb") as f:
 4. 数据从第二行开始
 5. 空行会自动跳过
 6. 单行处理失败不影响其他行
+7. **Windows 系统需安装 ODBC Driver 17 for SQL Server**（用于连接 SQL Server 读取 kb_article）
+   - 下载地址：https://learn.microsoft.com/zh-cn/sql/connect/odbc/download-odbc-driver-for-sql-server
+   - 或使用 SQL Server 安装包自带的驱动

@@ -25,7 +25,7 @@
       <div v-for="message in messages" :key="message.messageId" class="message-wrapper">
         <ChatMessageBubble :message="message" />
         <AiAnswerCard
-          v-if="message.role === 'assistant' && getAIMeta(message.messageId)"
+          v-if="message.role === 'assistant' && shouldShowAnswerCard(message.messageId)"
           :meta="getAIMeta(message.messageId)!"
           :solution="getSolution(message.messageId)"
           :readonly="true"
@@ -67,6 +67,11 @@ onMounted(() => {
 
 function getAIMeta(messageId: string): AIResponseMeta | null {
   return aiMetas.value.find((m) => m.relatedMessageId === messageId) || null
+}
+
+function shouldShowAnswerCard(messageId: string): boolean {
+  const meta = getAIMeta(messageId)
+  return meta != null && meta.replyMode !== 'conversation'
 }
 
 function getSolution(messageId: string): { temporary: string; final: string } {

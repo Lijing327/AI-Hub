@@ -164,7 +164,7 @@ import { Plus, Upload, UploadFilled } from '@element-plus/icons-vue'
 import { knowledgeApi } from '../api/knowledge'
 import { apiConfig } from '../config/api'
 import type { KnowledgeItemDto, SearchKnowledgeItemDto } from '../types/knowledge'
-import type { UploadFile, UploadFiles } from 'element-plus'
+import type { UploadFile } from 'element-plus'
 
 const router = useRouter()
 
@@ -308,7 +308,7 @@ const selectedFile = ref<File | null>(null)
 const importing = ref(false)
 const importResult = ref<any>(null)
 
-const handleFileChange = (file: UploadFile, files: UploadFiles) => {
+const handleFileChange = (file: UploadFile) => {
   selectedFile.value = file.raw as File
   importResult.value = null
 }

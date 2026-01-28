@@ -152,12 +152,13 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElUpload, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { knowledgeApi, attachmentApi } from '../api/knowledge'
-import type { KnowledgeItemDto, CreateKnowledgeItemDto, UpdateKnowledgeItemDto } from '../types/knowledge'
+import type { CreateKnowledgeItemDto, UpdateKnowledgeItemDto, AttachmentDto } from '../types/knowledge'
 
 const router = useRouter()
 const route = useRoute()
 
 const formRef = ref<FormInstance>()
+// 模板中 el-upload 的 ref，用于上传组件引用（模板 ref="uploadRef" 绑定）
 const uploadRef = ref<InstanceType<typeof ElUpload>>()
 const submitting = ref(false)
 const knowledgeItemId = ref<number | null>(null)
@@ -236,8 +237,9 @@ const parseScopeJson = (jsonStr: string | null | undefined) => {
 
 // 标签列表（计算属性）
 const tagList = computed(() => {
-  if (!form.tags || form.tags.trim() === '') return []
-  return form.tags
+  const tagsStr = form.tags ?? ''
+  if (!tagsStr.trim()) return []
+  return tagsStr
     .split(/[,\n\r]+/)
     .map(tag => tag.trim())
     .filter(tag => tag.length > 0)
@@ -246,12 +248,13 @@ const tagList = computed(() => {
 
 // 规范化标签（去重、去空格）
 const normalizeTags = () => {
-  if (!form.tags || form.tags.trim() === '') {
+  const tagsStr = form.tags ?? ''
+  if (!tagsStr.trim()) {
     form.tags = ''
     return
   }
-  
-  const tags = form.tags
+
+  const tags = tagsStr
     .split(/[,\n\r]+/)
     .map(tag => tag.trim())
     .filter(tag => tag.length > 0)
@@ -263,12 +266,12 @@ const normalizeTags = () => {
 // 插入标准模板
 const insertTemplate = async () => {
   // 检查是否有非空内容
-  const hasContent = 
-    form.questionText.trim() !== '' ||
-    form.causeText.trim() !== '' ||
-    form.solutionText.trim() !== '' ||
+  const hasContent =
+    (form.questionText ?? '').trim() !== '' ||
+    (form.causeText ?? '').trim() !== '' ||
+    (form.solutionText ?? '').trim() !== '' ||
     scopeItems.value.some(item => item.key.trim() !== '' || item.value.trim() !== '') ||
-    form.tags.trim() !== ''
+    (form.tags ?? '').trim() !== ''
 
   if (hasContent) {
     try {
@@ -287,15 +290,15 @@ const insertTemplate = async () => {
   }
 
   // 插入模板（不覆盖已有非空内容）
-  if (form.questionText.trim() === '') {
+  if ((form.questionText ?? '').trim() === '') {
     form.questionText = '【发生场景】\n【具体表现】\n【报警信息】\n【影响范围】'
   }
 
-  if (form.causeText.trim() === '') {
+  if ((form.causeText ?? '').trim() === '') {
     form.causeText = '原因 1：\n原因 2：\n原因 3：'
   }
 
-  if (form.solutionText.trim() === '') {
+  if ((form.solutionText ?? '').trim() === '') {
     form.solutionText = '步骤 1：\n步骤 2：\n步骤 3：'
   }
 
@@ -308,7 +311,7 @@ const insertTemplate = async () => {
     ]
   }
 
-  if (form.tags.trim() === '') {
+  if ((form.tags ?? '').trim() === '') {
     form.tags = ''
   }
 
@@ -325,9 +328,10 @@ const validateBeforePublish = (): string[] => {
   }
 
   // 检查解决步骤数量
-  if (form.solutionText.trim()) {
+  const solutionText = form.solutionText ?? ''
+  if (solutionText.trim()) {
     // 匹配 "步骤 X：" 或 "步骤X：" 格式
-    const stepMatches = form.solutionText.match(/步骤\s*\d+[：:]/gi)
+    const stepMatches = solutionText.match(/步骤\s*\d+[：:]/gi)
     const stepCount = stepMatches ? stepMatches.length : 0
     if (stepCount < 3) {
       warnings.push(`解决步骤少于3条（当前${stepCount}条），建议至少3条以确保完整性`)
@@ -425,12 +429,13 @@ const loadData = async () => {
     // 解析适用范围 JSON 为键值对列表
     parseScopeJson(item.scopeJson)
 
-    // 加载附件
-    if (item.attachments) {
-      fileList.value = item.attachments.map(att => ({
+    // 加载附件（后端返回 assets）
+    const assets = item.assets
+    if (assets && assets.length > 0) {
+      fileList.value = assets.map((att: AttachmentDto) => ({
         uid: att.id,
         name: att.fileName,
-        url: att.fileUrl,
+        url: att.fileUrl ?? att.url,
         response: { id: att.id }
       }))
     }
@@ -525,6 +530,8 @@ const handleCancel = () => {
 
 onMounted(() => {
   loadData()
+  // uploadRef 由模板 ref="uploadRef" 使用，此处引用以消除 TS6133
+  void uploadRef.value
 })
 </script>
 

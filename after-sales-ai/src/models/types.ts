@@ -74,6 +74,8 @@ export interface AIResponseMeta {
   alarmCode?: string
   issueCategory: string
   relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
+  /** 展示模式：conversation=仅对话气泡，不展示故障排查卡片 */
+  replyMode?: 'conversation' | 'troubleshooting'
 }
 
 // 工单
@@ -154,6 +156,8 @@ export interface AIResponse {
   shouldEscalate: boolean
   shortAnswerText: string
   relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
+  /** 展示模式：conversation=仅对话气泡，不展示故障排查结构 */
+  replyMode?: 'conversation' | 'troubleshooting'
 }
 
 // 相关文章（用于显示其他可能匹配的问题）

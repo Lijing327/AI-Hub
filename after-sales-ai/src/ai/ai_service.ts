@@ -1,8 +1,9 @@
 /**
  * AI 服务：从后端知识库获取数据并匹配问题
+ * 现在通过Python服务进行搜索和AI回答，便于后续集成大模型
  */
 import type { Device, AIResponse } from '@/models/types'
-import { searchKnowledgeArticles, type KnowledgeArticleDto } from '@/api/knowledge'
+import { chatSearch, type ChatResponse } from '@/api/knowledge'
 
 /**
  * 根据问题和设备信息生成 AI 回答
@@ -13,39 +14,50 @@ export async function generateAIResponse(
 ): Promise<AIResponse & { relatedArticles?: Array<{ id: number; title: string; questionText?: string }> }> {
   console.log('开始搜索知识库，问题:', questionText)
   
-  // 从后端搜索知识库
-  // 暂时不限制status，先搜索所有状态的数据（后续可以优化）
-  const searchResults = await searchKnowledgeArticles({
-    keyword: questionText,
-    // status: 'published', // 暂时移除，先搜索所有状态的数据
-    pageIndex: 1,
-    pageSize: 10 // 获取前10个结果，用于匹配和展示
+  // 调用Python服务进行智能搜索和回答
+  // Python服务会调用.NET后端搜索知识库，并进行数据解析和格式化
+  // 后续可以在这里集成AI大模型进行语义匹配和自然语言生成
+  const chatResponse = await chatSearch({
+    question: questionText,
+    device_id: device.deviceId,
+    tenant_id: 'default' // 暂时使用默认租户
   })
 
-  console.log('搜索结果:', {
-    totalCount: searchResults.totalCount,
-    itemsCount: searchResults.items.length,
-    items: searchResults.items.map(item => ({ id: item.id, title: item.title, status: item.status }))
-  })
+  console.log('Python服务返回:', chatResponse)
 
-  if (searchResults.items.length === 0) {
-    // 没有找到匹配的知识条目
-    console.warn('未找到匹配的知识条目')
-    return handleNoMatch(questionText, device)
-  }
-
-  // 找到匹配的知识条目，使用第一个（最相近的）作为主要回答
-  const primaryArticle = searchResults.items[0]
-  const relatedArticles = searchResults.items.slice(1) // 其他可能匹配的
-
-  // 将知识条目转换为 AI 响应格式
-  return convertArticleToAIResponse(primaryArticle, relatedArticles, questionText, device)
+  // 将Python服务的响应转换为前端需要的格式
+  return convertChatResponseToAIResponse(chatResponse)
 }
 
 /**
- * 将知识条目转换为 AI 响应格式
+ * 将Python服务的响应转换为前端AI响应格式
  */
-function convertArticleToAIResponse(
+function convertChatResponseToAIResponse(chatResponse: ChatResponse): AIResponse & { relatedArticles?: Array<{ id: number; title: string; questionText?: string }> } {
+  return {
+    issueCategory: chatResponse.issue_category,
+    alarmCode: chatResponse.alarm_code,
+    confidence: chatResponse.confidence,
+    topCauses: chatResponse.top_causes,
+    steps: chatResponse.steps,
+    solution: chatResponse.solution,
+    safetyTip: chatResponse.safety_tip,
+    citedDocs: chatResponse.cited_docs,
+    shouldEscalate: chatResponse.should_escalate,
+    shortAnswerText: chatResponse.short_answer_text,
+    relatedArticles: chatResponse.related_articles?.map(a => ({
+      id: a.id,
+      title: a.title,
+      questionText: a.questionText
+    })),
+    replyMode: chatResponse.reply_mode
+  }
+}
+
+/**
+ * 将知识条目转换为 AI 响应格式（已废弃，现在由Python服务处理）
+ * 保留此函数以防需要回退
+ */
+function convertArticleToAIResponse_OLD(
   article: KnowledgeArticleDto,
   relatedArticles: KnowledgeArticleDto[],
   questionText: string,
