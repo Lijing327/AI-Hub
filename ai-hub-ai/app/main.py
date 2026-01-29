@@ -13,6 +13,7 @@ from app.core.logging_config import setup_logging as setup_logging_old, get_logg
 from app.core.exceptions import AppException
 from app.core.middleware import RequestLogMiddleware
 from app.api.v1.router import api_router
+from app.api.chat import router as chat_router
 from app.clients.deepseek_client import DeepSeekClient
 
 # 初始化日志（在其它模块使用 logger 前执行）
@@ -43,6 +44,8 @@ def create_app() -> FastAPI:
 
     # 注册 v1 路由（路径与原先保持一致，包含向量能力闭环）
     app.include_router(api_router)
+    # 意图分流聊天入口：POST /chat
+    app.include_router(chat_router)
 
     @app.on_event("startup")
     async def startup():
