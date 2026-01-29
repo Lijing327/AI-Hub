@@ -15,6 +15,8 @@ from app.core.logging_config import get_logger
 from app.clients.dotnet_client import DotnetClient
 from app.clients.deepseek_client import DeepSeekClient
 from app.schemas.chat import ChatRequest, ChatResponse
+from app.services.query_service import QueryService
+from app.repositories.kb_article_repo import KbArticleRepository
 
 logger = get_logger(__name__)
 
@@ -282,16 +284,93 @@ class ChatService:
         self,
         dotnet_client: Optional[DotnetClient] = None,
         deepseek_client: Optional[DeepSeekClient] = None,
+        query_service: Optional[QueryService] = None,
+        kb_repo: Optional[KbArticleRepository] = None,
     ):
         self.dotnet_client = dotnet_client or DotnetClient()
         self.deepseek_client = deepseek_client or DeepSeekClient()
+        self._query_service = query_service
+        self._kb_repo = kb_repo
+
+    def _kb_article_to_chat_response(self, articles: list, related: list = None) -> ChatResponse:
+        """将 KbArticle 列表转换为 ChatResponse"""
+        if not articles:
+            return NO_MATCH_RESPONSE
+        
+        primary = articles[0]
+        related = related or (articles[1:] if len(articles) > 1 else [])
+
+        alarm_code = extract_alarm_code(
+            (primary.title or "") + " " + (primary.question_text or ""),
+        )
+        issue_category = determine_issue_category(
+            primary.title or "",
+            primary.question_text,
+            primary.tags,
+        )
+        cause_text = primary.cause_text or ""
+        solution_text = primary.solution_text or ""
+
+        top_causes = parse_causes(cause_text)
+        if not top_causes and solution_text:
+            lines = [ln.strip() for ln in solution_text.split("\n") if ln.strip()]
+            if lines:
+                top_causes = [lines[0][:100]]
+
+        steps = parse_steps(solution_text, cause_text)
+        if not steps and cause_text:
+            steps = parse_steps(cause_text)
+        solution = parse_solution(solution_text, cause_text)
+
+        confidence = 0.8
+        if related:
+            confidence = 0.7
+        if not alarm_code and not top_causes:
+            confidence = 0.6
+
+        if alarm_code:
+            short_answer = f"已识别报警码 {alarm_code}。{top_causes[0] if top_causes else '请按照排查步骤逐步检查'}。"
+        elif top_causes:
+            short_answer = f"{primary.title or ''}。{top_causes[0]}。建议按照排查步骤逐步检查。"
+        else:
+            short_answer = f"{primary.title or ''}。请查看详细排查步骤和解决方案。"
+
+        related_list: Optional[List[Dict[str, Any]]] = None
+        if related:
+            related_list = [
+                {
+                    "id": a.id,
+                    "title": a.title or "",
+                    "questionText": a.question_text,
+                    "excerpt": a.question_text or a.title or "",
+                }
+                for a in related
+            ]
+
+        return ChatResponse(
+            issue_category=issue_category,
+            alarm_code=alarm_code,
+            confidence=confidence,
+            top_causes=top_causes,
+            steps=steps,
+            solution=solution,
+            safety_tip="⚠️ 安全提示：处理故障前请先断电，确保安全。涉及电气部件时，请由专业技术人员操作。",
+            cited_docs=[{
+                "kbId": str(primary.id),
+                "title": primary.title or "",
+                "excerpt": primary.question_text or primary.title or "",
+            }],
+            should_escalate=confidence < 0.7,
+            short_answer_text=short_answer,
+            related_articles=related_list,
+        )
 
     async def search_and_answer(self, request: ChatRequest) -> ChatResponse:
         """
         搜索知识库并生成回答
         - 「你是谁」等身份/闲聊类问题：若已配置 DeepSeek，直接走 AI，不查知识库
-        - 其余：先调 .NET 知识库搜索；有结果则解析为结构化回答
-        - 若 .NET 不可用（502/503/超时等）或结果为空，且已配置 DeepSeek，则用 AI 生成兜底回答
+        - 其余：优先使用向量检索（QueryService）；若向量检索失败或无结果，fallback 到 .NET 后端
+        - 若都不可用或结果为空，且已配置 DeepSeek，则用 AI 生成兜底回答
         """
         tenant_id = request.tenant_id or settings.DEFAULT_TENANT
         self.dotnet_client.tenant_id = tenant_id
@@ -308,6 +387,37 @@ class ChatService:
         if _is_chitchat_question(request.question):
             logger.warning("识别为身份/闲聊问题，但 DeepSeek 未配置，返回通用提示")
 
+        # 优先使用向量检索
+        if self._query_service and self._kb_repo:
+            try:
+                logger.info("使用向量检索查询: %s", request.question)
+                hits = self._query_service.query(
+                    tenant_id=tenant_id,
+                    query_text=request.question,
+                    top_k=10,
+                )
+                if hits:
+                    article_ids = [h["article_id"] for h in hits]
+                    logger.info("向量检索命中 %d 条，article_ids: %s", len(hits), article_ids[:5])
+                    
+                    # 从数据库读取完整的 article 数据
+                    articles = []
+                    for aid in article_ids:
+                        article = self._kb_repo.get_by_id(aid)
+                        if article:
+                            articles.append(article)
+                    
+                    if articles:
+                        logger.info("成功读取 %d 条 article 数据", len(articles))
+                        return self._kb_article_to_chat_response(articles)
+                    else:
+                        logger.warning("向量检索返回了 article_ids，但数据库查询为空")
+                else:
+                    logger.info("向量检索无结果")
+            except Exception as e:
+                logger.warning("向量检索失败，fallback 到 .NET 后端: %s", e)
+
+        # Fallback: 使用 .NET 后端搜索
         try:
             search_result = await self.dotnet_client.search_knowledge(
                 keyword=request.question,

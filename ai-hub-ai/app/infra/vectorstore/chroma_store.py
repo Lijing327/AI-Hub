@@ -28,18 +28,31 @@ class ChromaVectorStore(IVectorStore):
             logger.debug("Chroma delete_by_article 可能无匹配: %s", e)
 
     def query(self, embedding: list[float], top_k: int, where: dict) -> list[dict]:
+        # 新版 Chroma 的 include 只支持: documents, embeddings, metadatas, distances, uris, data（不含 ids）
         res = self._col.query(
             query_embeddings=[embedding],
             n_results=top_k,
             where=where,
-            include=["metadatas", "distances", "ids"],
+            include=["metadatas", "distances"],
         )
         # Chroma distances：越小越相近（默认）
-        ids = res.get("ids", [[]])[0]
+        ids = res.get("ids", [[]])
+        ids_list = ids[0] if ids else []
         dists = res.get("distances", [[]])[0]
         metas = res.get("metadatas", [[]])[0]
 
         out: list[dict] = []
-        for _id, d, m in zip(ids, dists, metas):
-            out.append({"id": _id, "score": float(d), "metadata": m or {}})
+        for i, (d, m) in enumerate(zip(dists, metas)):
+            meta = m or {}
+            # 若返回里没有 ids，用 metadata 拼出唯一标识
+            _id = ids_list[i] if i < len(ids_list) else _reconstruct_id(meta)
+            out.append({"id": _id, "score": float(d), "metadata": meta})
         return out
+
+
+def _reconstruct_id(meta: dict) -> str:
+    """用 metadata 拼出与写入时一致的 vector id"""
+    t = meta.get("tenant_id") or "default"
+    aid = meta.get("article_id") or 0
+    typ = meta.get("type") or "q"
+    return f"{t}:kb:{aid}:{typ}"

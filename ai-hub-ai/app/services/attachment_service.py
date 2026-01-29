@@ -4,6 +4,7 @@
 """
 import os
 import re
+import unicodedata
 from pathlib import Path
 from typing import List, Optional
 from urllib.parse import quote
@@ -12,6 +13,19 @@ from app.core.config import settings
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def _normalize_for_match(s: str) -> str:
+    """
+    用于匹配时的规范化：小写、去空白、Unicode 正规化、去掉不可见字符。
+    解决 Excel/引用与磁盘文件名在全角/半角、不可见字符上的差异。
+    """
+    if not s or not isinstance(s, str):
+        return ""
+    # 去掉零宽字符、不可见字符
+    s = "".join(c for c in s if unicodedata.category(c) != "Cf" and c not in "\u200b\u200c\u200d\ufeff")
+    s = unicodedata.normalize("NFKC", s).strip().lower()
+    return s
 
 
 def _guess_asset_type_by_ext(ext: str) -> str:
@@ -108,10 +122,10 @@ class AttachmentService:
             return []
 
         clean_filename = filename.strip().strip('"""\'""\'《》【】[]()（）').strip()
-        logger.debug("查找附件: 原始='%s', 清理后='%s'", filename, clean_filename)
-
         if "." in clean_filename:
             clean_filename = Path(clean_filename).stem
+        norm_clean = _normalize_for_match(clean_filename)
+        logger.debug("查找附件: 原始='%s', 清理后='%s', 规范化='%s'", filename, clean_filename, norm_clean)
 
         extensions_map = {
             "video": [".mp4", ".avi", ".mov", ".wmv", ".flv", ".mkv"],
@@ -119,8 +133,27 @@ class AttachmentService:
             "pdf": [".pdf"],
             "other": [".doc", ".docx", ".xls", ".xlsx", ".txt", ".ppt", ".pptx"],
         }
+        all_exts = set()
+        for exts in extensions_map.values():
+            all_exts.update(e.lower() for e in exts)
 
-        # 1) 精确匹配
+        # 0) 按“实际文件名”遍历匹配（避免路径拼接导致的编码/全角差异）
+        for fp in base_path.iterdir():
+            if fp.is_file() and not _should_skip_file(fp) and fp.suffix.lower() in all_exts:
+                if _normalize_for_match(fp.stem) == norm_clean:
+                    logger.info("找到附件（根目录-规范化匹配）: %s -> %s", clean_filename, fp.name)
+                    info = _build_file_info(base_path, fp, self.base_url)
+                    info["type"] = _guess_asset_type_by_ext(fp.suffix)
+                    return [info]
+        for fp in base_path.rglob("*"):
+            if fp.is_file() and not _should_skip_file(fp) and fp.suffix.lower() in all_exts:
+                if _normalize_for_match(fp.stem) == norm_clean:
+                    logger.info("找到附件（全目录-规范化匹配）: %s -> %s", clean_filename, fp.name)
+                    info = _build_file_info(base_path, fp, self.base_url)
+                    info["type"] = _guess_asset_type_by_ext(fp.suffix)
+                    return [info]
+
+        # 1) 精确匹配（路径拼接）
         for asset_type, exts in extensions_map.items():
             for ext in exts:
                 full_name = clean_filename + ext
@@ -137,41 +170,60 @@ class AttachmentService:
                         info["type"] = asset_type
                         return [info]
 
-                # 2) 模糊匹配
+                # 2) 模糊匹配（使用规范化比较）
                 for pattern in [f"*{clean_filename}*{ext}", f"{clean_filename}*{ext}"]:
                     for fp in list(base_path.glob(pattern)) + list(base_path.rglob(pattern)):
                         if fp.is_file():
-                            stem_lower = fp.stem.lower()
-                            if stem_lower == clean_filename.lower() or clean_filename.lower() in stem_lower:
+                            norm_stem = _normalize_for_match(fp.stem)
+                            if norm_stem == norm_clean or norm_clean in norm_stem or norm_stem in norm_clean:
                                 logger.info("找到附件（模糊）: %s -> %s", clean_filename, fp.name)
                                 info = _build_file_info(base_path, fp, self.base_url)
                                 info["type"] = asset_type
                                 return [info]
 
-        # 3) 文件夹匹配
-        clean_lower = clean_filename.lower()
+        # 3) 文件夹匹配（使用规范化比较）
         for folder in base_path.rglob("*"):
             if not folder.is_dir():
                 continue
-            fn_lower = folder.name.lower()
-            if clean_lower == fn_lower or clean_lower in fn_lower or fn_lower in clean_lower:
+            norm_folder = _normalize_for_match(folder.name)
+            if norm_clean == norm_folder or norm_clean in norm_folder or norm_folder in norm_clean:
                 files = [p for p in folder.rglob("*") if p.is_file() and not _should_skip_file(p)]
                 files.sort(key=lambda p: str(p).lower())
                 results = [_build_file_info(base_path, p, self.base_url) for p in files]
                 logger.info("找到附件（文件夹）: %s -> %s 共 %d 个", clean_filename, folder.name, len(results))
                 return results
 
-        # 4) 兜底：按 stem 完全匹配
+        # 4) 兜底：按规范化 stem 完全匹配
         for fp in base_path.iterdir():
-            if fp.is_file() and not _should_skip_file(fp) and fp.stem.lower() == clean_lower:
+            if fp.is_file() and not _should_skip_file(fp) and _normalize_for_match(fp.stem) == norm_clean:
                 info = _build_file_info(base_path, fp, self.base_url)
                 info["type"] = _guess_asset_type_by_ext(fp.suffix)
                 return [info]
         for fp in base_path.rglob("*"):
-            if fp.is_file() and not _should_skip_file(fp) and fp.stem.lower() == clean_lower:
+            if fp.is_file() and not _should_skip_file(fp) and _normalize_for_match(fp.stem) == norm_clean:
                 info = _build_file_info(base_path, fp, self.base_url)
                 info["type"] = _guess_asset_type_by_ext(fp.suffix)
                 return [info]
+
+        # 5) 兜底：规范化后“包含”匹配（取 stem 最短的，避免误匹配）
+        candidates = []
+        for fp in base_path.iterdir():
+            if fp.is_file() and not _should_skip_file(fp) and fp.suffix.lower() in all_exts:
+                norm_stem = _normalize_for_match(fp.stem)
+                if norm_clean in norm_stem or norm_stem in norm_clean:
+                    candidates.append((len(fp.stem), fp))
+        for fp in base_path.rglob("*"):
+            if fp.is_file() and not _should_skip_file(fp) and fp.suffix.lower() in all_exts:
+                norm_stem = _normalize_for_match(fp.stem)
+                if norm_clean in norm_stem or norm_stem in norm_clean:
+                    candidates.append((len(fp.stem), fp))
+        if candidates:
+            candidates.sort(key=lambda x: (x[0], str(x[1]).lower()))
+            _, best = candidates[0]
+            logger.info("找到附件（兜底-包含匹配）: %s -> %s", clean_filename, best.name)
+            info = _build_file_info(base_path, best, self.base_url)
+            info["type"] = _guess_asset_type_by_ext(best.suffix)
+            return [info]
 
         logger.warning("未找到附件: %s (清理后: %s)", filename, clean_filename)
         return []

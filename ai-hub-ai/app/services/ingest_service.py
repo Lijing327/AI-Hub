@@ -64,6 +64,10 @@ class IngestService:
             "upserted_total": upserted_total,
         }
 
+    def count_articles(self, tenant_id: str, status: str | None = None) -> int:
+        """统计库中符合条件的 article 数量（调试用）"""
+        return self._kb_repo.count_ids(tenant_id=tenant_id, status=status)
+
     def rebuild_all(self, tenant_id: str, status: str | None = None, limit: int | None = None) -> dict:
         """
         全量重建：先从 SQL 拉取 id 列表，再走 batch

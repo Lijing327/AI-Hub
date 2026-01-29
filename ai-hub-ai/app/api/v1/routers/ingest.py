@@ -1,5 +1,5 @@
 """向量写入/重建：单条、批量、全量"""
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from app.api.deps import get_ingest_service
 from app.core.config import settings
 from app.schemas.ingest import (
@@ -37,3 +37,18 @@ def ingest_all(req: IngestAllRequest):
     tenant_id = req.tenant_id or settings.DEFAULT_TENANT
     result = svc.rebuild_all(tenant_id=tenant_id, status=req.status, limit=req.limit)
     return IngestBatchResponse(**result)
+
+
+@router.get("/ingest/debug/count")
+def ingest_debug_count(
+    tenant_id: str | None = Query(None, description="租户 ID，不传则用配置的 DEFAULT_TENANT"),
+    status: str | None = Query(None, description="按 status 过滤，不传则统计全部"),
+):
+    """
+    调试用：返回 dbo.kb_article 中符合条件的条数。
+    用于确认全量重建 total=0 是「库中无数据」还是「tenant_id/status 条件不匹配」。
+    """
+    svc = get_ingest_service()
+    tid = tenant_id or settings.DEFAULT_TENANT
+    count = svc.count_articles(tenant_id=tid, status=status)
+    return {"tenant_id": tid, "status": status, "count": count}

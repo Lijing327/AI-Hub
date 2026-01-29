@@ -5,6 +5,7 @@ from fastapi import APIRouter, HTTPException
 from app.schemas.chat import ChatRequest, ChatResponse
 from app.services.chat_service import ChatService
 from app.core.logging_config import get_logger
+from app.api.deps import get_query_service, get_kb_repo
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["智能客服"])
@@ -16,7 +17,10 @@ def get_chat_service() -> ChatService:
     """获取智能客服服务单例"""
     global _chat_service
     if _chat_service is None:
-        _chat_service = ChatService()
+        _chat_service = ChatService(
+            query_service=get_query_service(),
+            kb_repo=get_kb_repo(),
+        )
     return _chat_service
 
 

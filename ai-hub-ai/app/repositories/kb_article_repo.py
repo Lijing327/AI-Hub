@@ -2,6 +2,9 @@
 from typing import Optional, List
 from app.infra.db.sqlserver import SqlServer, execute_query
 from app.schemas.kb_article import KbArticle
+from app.core.logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class KbArticleRepository:
@@ -21,12 +24,36 @@ class KbArticleRepository:
             return None
         return KbArticle(**row)
 
+    def count_ids(self, tenant_id: str, status: str | None = None) -> int:
+        """
+        统计符合条件的 article 数量（用于调试：确认库中是否有数据）
+        """
+        if status:
+            sql = """
+            SELECT COUNT(*) AS cnt FROM dbo.kb_article
+            WHERE tenant_id = ? AND status = ? AND deleted_at IS NULL
+            """
+            row = self._db.fetch_one(sql, (tenant_id, status))
+        else:
+            sql = """
+            SELECT COUNT(*) AS cnt FROM dbo.kb_article
+            WHERE tenant_id = ? AND deleted_at IS NULL
+            """
+            row = self._db.fetch_one(sql, (tenant_id,))
+        if not row:
+            return 0
+        return int(row.get("cnt", 0) or 0)
+
     def list_ids(self, tenant_id: str, status: str | None = None, limit: int | None = None) -> list[int]:
         """
         拉取 article id 列表（用于全量 ingest）
         status 如果传入（比如 'published'），会过滤
         limit 用于安全限制（开发阶段）
         """
+        logger.info(
+            "list_ids 调用: tenant_id=%r, status=%r, limit=%s",
+            tenant_id, status, limit,
+        )
         top = f"TOP ({limit})" if limit and limit > 0 else ""
         if status:
             sql = f"""
@@ -44,7 +71,9 @@ class KbArticleRepository:
             ORDER BY id ASC
             """
             rows = self._db.fetch_all(sql, (tenant_id,))
-        return [int(r["id"]) for r in rows]
+        ids = [int(r["id"]) for r in rows]
+        logger.info("list_ids 返回: %d 条 (tenant_id=%r)", len(ids), tenant_id)
+        return ids
 
 
 # 兼容旧代码的函数式接口
