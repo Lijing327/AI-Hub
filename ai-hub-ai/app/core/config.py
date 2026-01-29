@@ -33,10 +33,15 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_DIR: str = "./data/chroma"
     CHROMA_COLLECTION: str = "kb_articles"
 
-    # Embedding（先用 fake 联调，后切 openai）
+    # Embedding（fake 联调 | openai 语义向量；支持 OpenAI / DeepSeek / 阿里百炼 DashScope）
     EMBEDDING_PROVIDER: str = "fake"  # fake | openai
     OPENAI_API_KEY: str | None = None
-    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    OPENAI_BASE_URL: str | None = None  # DeepSeek: https://api.deepseek.com/v1；百炼: https://dashscope.aliyuncs.com/compatible-mode/v1
+    OPENAI_EMBEDDING_MODEL: str = "text-embedding-3-small"  # DeepSeek: deepseek-embedding-v2；百炼: text-embedding-v3
+    OPENAI_EMBEDDING_DIMENSIONS: int | None = None  # 百炼 v3/v4 可选：1024,768,512,256,128,64，不填则用模型默认
+
+    # 阿里百炼 DashScope（embedding 用 OpenAI 兼容接口时可用 DASHSCOPE_API_KEY）
+    DASHSCOPE_API_KEY: str = ""
 
     # 向量相关（保留兼容）
     EMBEDDING_API_KEY: str = ""

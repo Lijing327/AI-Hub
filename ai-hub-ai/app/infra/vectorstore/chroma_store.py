@@ -10,12 +10,36 @@ logger = get_logger(__name__)
 class ChromaVectorStore(IVectorStore):
     def __init__(self) -> None:
         persist_dir = settings.CHROMA_PERSIST_DIR or settings.CHROMA_PERSIST_PATH or "./data/chroma"
-        collection_name = settings.CHROMA_COLLECTION or "kb_articles"
+        self._collection_name = settings.CHROMA_COLLECTION or "kb_articles"
         self._client = chromadb.PersistentClient(path=persist_dir)
-        self._col = self._client.get_or_create_collection(name=collection_name)
+        self._col = self._client.get_or_create_collection(name=self._collection_name)
+
+    def _recreate_collection(self) -> None:
+        """删除当前集合并重新创建（用于切换 embedding 维度后）"""
+        try:
+            self._client.delete_collection(name=self._collection_name)
+            logger.info("Chroma 已删除旧集合: %s（维度已变更，将重建）", self._collection_name)
+        except Exception as e:
+            logger.debug("删除集合时忽略: %s", e)
+        self._col = self._client.get_or_create_collection(name=self._collection_name)
 
     def upsert(self, ids: list[str], embeddings: list[list[float]], documents: list[str], metadatas: list[dict]) -> int:
-        self._col.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+        try:
+            self._col.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+        except Exception as e:
+            err_msg = str(e).lower()
+            # 维度与集合不一致（如从 fake 64 维切到百炼 1024 维）：删集合重建后重试一次
+            # 兼容两种报错: "does not match" 或 "expecting ... dimension ... got"
+            is_dimension_mismatch = (
+                "dimension" in err_msg
+                and ("match" in err_msg or "expecting" in err_msg or " got " in err_msg)
+            )
+            if is_dimension_mismatch:
+                logger.warning("Chroma 维度不一致，重建集合后重试: %s", e)
+                self._recreate_collection()
+                self._col.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)
+            else:
+                raise
         logger.info("Chroma upsert %d 条", len(ids))
         return len(ids)
 
