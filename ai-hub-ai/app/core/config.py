@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     DEEPSEEK_BASE_URL: str = "https://api.deepseek.com"
     DEEPSEEK_MODEL: str = "deepseek-chat"
 
+    # 对话 LLM 可选走百炼兼容（与上面示例一致：base_url + model + DASHSCOPE_API_KEY）
+    # 配置后 chat 将用 openai 库请求该 base_url，不再用 DEEPSEEK_* 直连
+    LLM_BASE_URL: str | None = None  # 如 https://dashscope.aliyuncs.com/compatible-mode/v1
+    LLM_MODEL: str | None = None     # 如 deepseek-v3.2 或 qwen-plus
+    LLM_API_KEY: str | None = None   # 不填则用 DASHSCOPE_API_KEY
+
     # SQL Server（kb_article 来源）
     SQLSERVER_DSN: str = "Driver={ODBC Driver 17 for SQL Server};Server=localhost;Database=ai_hub;Trusted_Connection=yes;"
 

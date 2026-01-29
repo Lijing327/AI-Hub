@@ -49,21 +49,30 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup():
-        # 检查 DeepSeek 配置状态
-        deepseek_client = DeepSeekClient()
-        deepseek_status = "已配置" if deepseek_client.is_available else "未配置（需在 .env 中设置 DEEPSEEK_API_KEY）"
-        
+        # 对话 LLM：百炼兼容 或 DeepSeek 直连
+        chat_client = DeepSeekClient()
+        if chat_client.is_available:
+            if getattr(chat_client, "_use_dashscope", False):
+                logger.info(
+                    "对话 LLM（百炼兼容）: 已配置 BaseURL=%s, Model=%s",
+                    settings.LLM_BASE_URL,
+                    settings.LLM_MODEL,
+                )
+            else:
+                logger.info(
+                    "对话 LLM（DeepSeek 直连）: 已配置 BaseURL=%s, Model=%s",
+                    settings.DEEPSEEK_BASE_URL,
+                    settings.DEEPSEEK_MODEL,
+                )
+        else:
+            logger.info(
+                "对话 LLM: 未配置（百炼: LLM_BASE_URL+LLM_MODEL+DASHSCOPE_API_KEY；或 DEEPSEEK_API_KEY）"
+            )
         logger.info(
             "配置: DOTNET_BASE_URL=%s, DEFAULT_TENANT=%s, ATTACHMENT_BASE_PATH=%s",
             settings.DOTNET_BASE_URL,
             settings.DEFAULT_TENANT,
             settings.ATTACHMENT_BASE_PATH or "(未配置)",
-        )
-        logger.info(
-            "DeepSeek AI 兜底: %s (BaseURL=%s, Model=%s)",
-            deepseek_status,
-            settings.DEEPSEEK_BASE_URL,
-            settings.DEEPSEEK_MODEL,
         )
 
     return app
