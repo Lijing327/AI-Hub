@@ -20,6 +20,7 @@
           :meta="getAIMeta(message.messageId)!"
           :solution="getSolution(message.messageId)"
           :related-articles="getRelatedArticles(message.messageId)"
+          :technical-resources="getTechnicalResources(message.messageId)"
           :readonly="false"
           @create-ticket="handleCreateTicket(message.messageId)"
           @feedback="handleFeedback(message.messageId, $event)"
@@ -84,7 +85,7 @@ import AiAnswerCard from '@/components/AiAnswerCard.vue'
 import DevicePicker from '@/components/DevicePicker.vue'
 import { sessionRepo, messageRepo, aiMetaRepo, ticketRepo, ticketLogRepo, deviceRepo, feedbackRepo } from '@/store/repositories'
 import { generateAIResponse } from '@/ai/ai_service'
-import type { ChatSession, ChatMessage, Device, AIResponseMeta, Ticket, TicketLog, RelatedArticle } from '@/models/types'
+import type { ChatSession, ChatMessage, Device, AIResponseMeta, Ticket, TicketLog, RelatedArticle, TechnicalResource } from '@/models/types'
 // import demoQuestionsData from '@/mock/demo_questions.json' // 已移除演示问题
 
 const route = useRoute()
@@ -132,6 +133,12 @@ function getSolution(messageId: string): { temporary: string; final: string } {
 function getRelatedArticles(messageId: string): RelatedArticle[] | undefined {
   const meta = getAIMeta(messageId)
   return meta?.relatedArticles
+}
+
+// 获取技术资料（附件）
+function getTechnicalResources(messageId: string): TechnicalResource[] | undefined {
+  const meta = getAIMeta(messageId)
+  return meta?.technicalResources
 }
 
 onMounted(async () => {
@@ -278,6 +285,7 @@ async function sendMessage() {
       alarmCode: aiResponse.alarmCode,
       issueCategory: aiResponse.issueCategory,
       relatedArticles,
+      technicalResources: aiResponse.technicalResources,
       replyMode: aiResponse.replyMode
     })
     aiMetas.value.push(aiMeta)

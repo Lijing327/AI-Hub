@@ -7,12 +7,13 @@
  * - 后端返回 conversation_id，前端存储后续请求带上
  * - 支持完整的对话回放和审计
  */
-import type { Device, AIResponse } from '@/models/types'
+import type { Device, AIResponse, TechnicalResource } from '@/models/types'
 import { chatSearch, type ChatResponse } from '@/api/knowledge'
 
 /** AI 响应（带审计字段） */
 export interface AIResponseWithAudit extends AIResponse {
   relatedArticles?: Array<{ id: number; title: string; questionText?: string }>
+  technicalResources?: TechnicalResource[] // 技术资料（附件）
   /** 会话 ID（存储后续请求带上） */
   conversationId?: string
   /** 本条消息 ID */
@@ -73,6 +74,15 @@ function convertChatResponseToAIResponse(chatResponse: ChatResponse): AIResponse
       id: a.id,
       title: a.title,
       questionText: a.questionText
+    })),
+    // 技术资料（附件）
+    technicalResources: chatResponse.technical_resources?.map(r => ({
+      id: r.id,
+      name: r.name,
+      type: r.type,
+      url: r.url,
+      size: r.size,
+      duration: r.duration
     })),
     replyMode: chatResponse.reply_mode,
     // 审计字段

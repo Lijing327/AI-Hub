@@ -14,9 +14,9 @@ from app.core.config import settings
 from app.core.logging_config import get_logger
 from app.clients.dotnet_client import DotnetClient
 from app.clients.deepseek_client import DeepSeekClient
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, ResourceItem
 from app.services.query_service import QueryService
-from app.repositories.kb_article_repo import KbArticleRepository
+from app.repositories.kb_article_repo import KbArticleRepository, get_assets_by_article_id
 
 logger = get_logger(__name__)
 
@@ -369,6 +369,26 @@ class ChatService:
                 for a in related
             ]
 
+        # 获取主命中文章的技术资料（附件）
+        technical_resources: Optional[List[ResourceItem]] = None
+        try:
+            assets = get_assets_by_article_id(primary.id)
+            if assets:
+                technical_resources = [
+                    ResourceItem(
+                        id=a["id"],
+                        name=a["name"],
+                        type=a["type"],
+                        url=a["url"],
+                        size=a.get("size"),
+                        duration=a.get("duration"),
+                    )
+                    for a in assets
+                ]
+                logger.info("获取到 %d 个技术资料（文章 ID: %d）", len(assets), primary.id)
+        except Exception as e:
+            logger.warning("获取技术资料失败（文章 ID: %d）: %s", primary.id, e)
+
         return ChatResponse(
             issue_category=issue_category,
             alarm_code=alarm_code,
@@ -385,6 +405,7 @@ class ChatService:
             should_escalate=confidence < 0.7,
             short_answer_text=short_answer,
             related_articles=related_list,
+            technical_resources=technical_resources,
         )
 
     async def search_and_answer(self, request: ChatRequest) -> ChatResponse:
@@ -571,6 +592,28 @@ class ChatService:
                 for a in related
             ]
 
+        # 获取主命中文章的技术资料（附件）
+        technical_resources: Optional[List[ResourceItem]] = None
+        primary_id = primary.get("id")
+        if primary_id:
+            try:
+                assets = get_assets_by_article_id(int(primary_id))
+                if assets:
+                    technical_resources = [
+                        ResourceItem(
+                            id=a["id"],
+                            name=a["name"],
+                            type=a["type"],
+                            url=a["url"],
+                            size=a.get("size"),
+                            duration=a.get("duration"),
+                        )
+                        for a in assets
+                    ]
+                    logger.info("获取到 %d 个技术资料（文章 ID: %s）", len(assets), primary_id)
+            except Exception as e:
+                logger.warning("获取技术资料失败（文章 ID: %s）: %s", primary_id, e)
+
         return ChatResponse(
             issue_category=issue_category,
             alarm_code=alarm_code,
@@ -587,4 +630,5 @@ class ChatService:
             should_escalate=confidence < 0.7,
             short_answer_text=short_answer,
             related_articles=related_list,
+            technical_resources=technical_resources,
         )

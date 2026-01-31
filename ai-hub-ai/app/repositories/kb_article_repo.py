@@ -1,10 +1,48 @@
-"""从 SQL Server 读 kb_article，不直接写 SQL 在 service 里"""
-from typing import Optional, List
+"""从 SQL Server 读 kb_article 和 kb_asset，不直接写 SQL 在 service 里"""
+from typing import Optional, List, Dict, Any
 from app.infra.db.sqlserver import SqlServer, execute_query
 from app.schemas.kb_article import KbArticle
 from app.core.logging_config import get_logger
 
 logger = get_logger(__name__)
+
+
+def get_assets_by_article_id(article_id: int) -> List[Dict[str, Any]]:
+    """
+    获取知识条目的附件列表
+    返回格式：[{"id": 1, "name": "xxx.mp4", "type": "video", "url": "...", "size": 1024, "duration": 60}]
+    """
+    sql = """
+    SELECT id, file_name, asset_type, url, size, duration
+    FROM dbo.kb_asset
+    WHERE article_id = ? AND deleted_at IS NULL
+    ORDER BY id ASC
+    """
+    rows = execute_query(sql, (article_id,))
+    assets = []
+    for r in rows:
+        # 映射 asset_type 到前端友好的类型
+        asset_type = r.get("asset_type", "other") or "other"
+        if asset_type in ("image", "video", "document", "pdf"):
+            display_type = asset_type
+        elif asset_type in ("jpg", "jpeg", "png", "gif", "webp"):
+            display_type = "image"
+        elif asset_type in ("mp4", "avi", "mov", "wmv"):
+            display_type = "video"
+        elif asset_type in ("doc", "docx", "pdf", "xls", "xlsx"):
+            display_type = "document"
+        else:
+            display_type = "other"
+        
+        assets.append({
+            "id": r.get("id"),
+            "name": r.get("file_name") or "",
+            "type": display_type,
+            "url": r.get("url") or "",
+            "size": r.get("size"),
+            "duration": r.get("duration"),
+        })
+    return assets
 
 
 class KbArticleRepository:

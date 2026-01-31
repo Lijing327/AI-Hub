@@ -74,6 +74,7 @@ export interface AIResponseMeta {
   alarmCode?: string
   issueCategory: string
   relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
+  technicalResources?: TechnicalResource[] // 技术资料（附件）
   /** 展示模式：conversation=仅对话气泡，不展示故障排查卡片 */
   replyMode?: 'conversation' | 'troubleshooting'
 }
@@ -156,6 +157,7 @@ export interface AIResponse {
   shouldEscalate: boolean
   shortAnswerText: string
   relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
+  technicalResources?: TechnicalResource[] // 技术资料（附件）
   /** 展示模式：conversation=仅对话气泡，不展示故障排查结构 */
   replyMode?: 'conversation' | 'troubleshooting'
 }
@@ -166,4 +168,14 @@ export interface RelatedArticle {
   title: string
   questionText?: string
   excerpt?: string
+}
+
+// 技术资料（命中知识条目的附件：图片、视频、文档等）
+export interface TechnicalResource {
+  id: number
+  name: string      // 文件名
+  type: string      // image/video/document/other
+  url: string       // 访问地址
+  size?: number     // 文件大小（字节）
+  duration?: number // 视频时长（秒）
 }

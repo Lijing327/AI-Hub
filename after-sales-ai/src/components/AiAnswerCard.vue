@@ -63,6 +63,32 @@
         </div>
       </div>
 
+      <!-- 专业资源（技术资料/附件） -->
+      <div class="section" v-if="technicalResources && technicalResources.length > 0">
+        <div class="section-title">专业资源</div>
+        <div class="resources-list">
+          <a
+            v-for="resource in technicalResources"
+            :key="resource.id"
+            :href="resource.url"
+            target="_blank"
+            class="resource-item"
+            :class="`resource-${resource.type}`"
+          >
+            <span class="resource-icon">{{ getResourceIcon(resource.type) }}</span>
+            <div class="resource-info">
+              <div class="resource-name">{{ resource.name }}</div>
+              <div class="resource-meta">
+                <span class="resource-type">{{ getResourceTypeName(resource.type) }}</span>
+                <span v-if="resource.size" class="resource-size">{{ formatFileSize(resource.size) }}</span>
+                <span v-if="resource.duration" class="resource-duration">{{ formatDuration(resource.duration) }}</span>
+              </div>
+            </div>
+            <span class="resource-action">查看</span>
+          </a>
+        </div>
+      </div>
+
       <!-- 其他可能匹配的问题（可展开收起） -->
       <div class="section collapsible-section" v-if="relatedArticles && relatedArticles.length > 0">
         <div class="section-title clickable" @click="toggleRelatedExpand">
@@ -99,7 +125,7 @@
 
 <script setup lang="ts">
 import { ref, defineProps, defineEmits, withDefaults } from 'vue'
-import type { AIResponseMeta, RelatedArticle } from '@/models/types'
+import type { AIResponseMeta, RelatedArticle, TechnicalResource } from '@/models/types'
 
 // 展开/收起状态（默认收起）
 const isRelatedExpanded = ref(false)
@@ -115,6 +141,7 @@ interface Props {
     final: string
   }
   relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
+  technicalResources?: TechnicalResource[] // 技术资料（附件）
   readonly?: boolean // 只读模式，用于会话详情页
 }
 
@@ -142,6 +169,44 @@ function handleSelectRelatedQuestion(article: RelatedArticle) {
   if (question && !props.readonly) {
     emit('selectRelatedQuestion', question)
   }
+}
+
+// 获取资源类型图标
+function getResourceIcon(type: string): string {
+  const icons: Record<string, string> = {
+    image: '🖼️',
+    video: '🎬',
+    document: '📄',
+    pdf: '📑',
+    other: '📎'
+  }
+  return icons[type] || icons.other
+}
+
+// 获取资源类型名称
+function getResourceTypeName(type: string): string {
+  const names: Record<string, string> = {
+    image: '图片',
+    video: '视频',
+    document: '文档',
+    pdf: 'PDF',
+    other: '文件'
+  }
+  return names[type] || names.other
+}
+
+// 格式化文件大小
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return bytes + ' B'
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB'
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB'
+}
+
+// 格式化时长
+function formatDuration(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = seconds % 60
+  return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 </script>
 
@@ -342,6 +407,93 @@ function handleSelectRelatedQuestion(article: RelatedArticle) {
   font-size: 12px;
   color: #666;
   line-height: 1.5;
+}
+
+/* 专业资源样式 */
+.resources-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%);
+  border-radius: 8px;
+  border: 1px solid #e0e7ff;
+  text-decoration: none;
+  transition: all 0.3s ease;
+  cursor: pointer;
+}
+
+.resource-item:hover {
+  background: linear-gradient(135deg, #eef2ff 0%, #e0e7ff 100%);
+  transform: translateX(4px);
+  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15);
+}
+
+.resource-icon {
+  font-size: 24px;
+  flex-shrink: 0;
+}
+
+.resource-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.resource-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+  margin-bottom: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.resource-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 12px;
+  color: #888;
+}
+
+.resource-type {
+  background: #e0e7ff;
+  color: #667eea;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.resource-action {
+  font-size: 13px;
+  color: #667eea;
+  font-weight: 500;
+  padding: 6px 12px;
+  background: rgba(102, 126, 234, 0.1);
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+
+/* 资源类型特殊样式 */
+.resource-image .resource-type {
+  background: #e6f7ff;
+  color: #1890ff;
+}
+
+.resource-video .resource-type {
+  background: #fff2e8;
+  color: #fa541c;
+}
+
+.resource-document .resource-type,
+.resource-pdf .resource-type {
+  background: #f6ffed;
+  color: #52c41a;
 }
 
 /* 可展开收起区域 */
