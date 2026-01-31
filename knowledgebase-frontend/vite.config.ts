@@ -2,8 +2,12 @@ import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
-export default defineConfig({
+// https://vitejs.dev/config/
+export default defineConfig(({ command, mode }) => ({
   plugins: [vue()],
+  // 生产环境部署在 /learning 子路径下
+  // build 命令时使用 /learning/，dev 时使用 /
+  base: command === 'build' ? '/learning/' : '/',
   resolve: {
     alias: {
       '@': resolve(__dirname, 'src')
@@ -30,4 +34,4 @@ export default defineConfig({
       }
     }
   }
-})
+}))

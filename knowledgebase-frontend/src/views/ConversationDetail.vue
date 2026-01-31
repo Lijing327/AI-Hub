@@ -49,7 +49,7 @@
           <h3>对话记录</h3>
           <div class="messages">
             <div
-              v-for="(msg, index) in conversation.messages"
+              v-for="msg in conversation.messages"
               :key="msg.messageId"
               :class="['message-item', `role-${msg.role}`, { selected: selectedMessageId === msg.messageId }]"
               @click="selectMessage(msg.messageId)"

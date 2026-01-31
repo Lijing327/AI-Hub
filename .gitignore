@@ -49,10 +49,19 @@ artifacts/
 *.svclog
 *.scc
 
+# .NET 发布产物
+publish/
+**/publish/
+**/PublishProfiles/
+*.pubxml
+*.pubxml.user
+
 # Node.js / Frontend
 node_modules/
 dist/
 dist-ssr/
+dist.rar
+dist.zip
 *.local
 logs/
 *.log
@@ -61,6 +70,21 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 lerna-debug.log*
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+*.egg-info/
+data/
+*.egg
 
 # Editor
 .vscode/*
@@ -73,11 +97,21 @@ lerna-debug.log*
 wwwroot/uploads/*
 !wwwroot/uploads/.gitkeep
 
-# Environment files
+# Environment files (包含敏感信息)
 .env
 .env.local
 .env.*.local
+.env.production
+appsettings.Production.json
+
+# 保留示例文件
+!.env.example
+!.env.production.example
+!appsettings.Production.example.json
 
 # OS
 Thumbs.db
 .DS_Store
+
+# MCP 缓存
+mcps/
