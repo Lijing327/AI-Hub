@@ -1,6 +1,7 @@
 using ai_hub_service.Data;
 using ai_hub_service.Services;
 using ai_hub_service.Middleware;
+using ai_hub_service.Modules.AiAudit.Services;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
 
@@ -20,6 +21,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
 builder.Services.AddScoped<IKnowledgeArticleService, KnowledgeArticleService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IIndexService, IndexService>();
+builder.Services.AddScoped<IAiAuditService, AiAuditService>();
 
 // 配置CORS
 var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>() 

@@ -23,6 +23,7 @@
           :readonly="false"
           @create-ticket="handleCreateTicket(message.messageId)"
           @feedback="handleFeedback(message.messageId, $event)"
+          @select-related-question="handleSelectRelatedQuestion"
         />
       </div>
       <!-- 加载状态 -->
@@ -103,6 +104,12 @@ const messagesContainer = ref<HTMLElement | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
 
+// 审计相关：后端返回的会话 ID（用于后续消息关联）
+const backendConversationId = ref<string | null>(null)
+
+// 会话存储 key
+const CONVERSATION_ID_KEY = 'ai_conversation_id'
+
 // 获取 AI 元数据
 function getAIMeta(messageId: string): AIResponseMeta | null {
   return aiMetas.value.find((m) => m.relatedMessageId === messageId) || null
@@ -147,6 +154,13 @@ onMounted(async () => {
     return
   }
 
+  // 恢复后端会话 ID（页面刷新时保持会话连续性）
+  const savedConversationId = sessionStorage.getItem(CONVERSATION_ID_KEY)
+  if (savedConversationId) {
+    backendConversationId.value = savedConversationId
+    console.log('恢复后端会话 ID:', savedConversationId)
+  }
+
   // 创建或获取会话
   const sessionId = route.query.sessionId as string
   if (sessionId) {
@@ -172,6 +186,11 @@ function createNewSession() {
     escalatedToTicket: false
   })
   currentSessionId.value = newSession.sessionId
+  
+  // 清除旧的后端会话 ID（新会话开始）
+  backendConversationId.value = null
+  sessionStorage.removeItem(CONVERSATION_ID_KEY)
+  
   loadMessages()
 }
 
@@ -213,7 +232,21 @@ async function sendMessage() {
   
   isLoading.value = true
   try {
-    const aiResponse = await generateAIResponse(text, device.value)
+    // 传入后端会话 ID（首次为空，后续带上）
+    const aiResponse = await generateAIResponse(
+      text,
+      device.value,
+      backendConversationId.value || undefined,
+      currentCustomerId.value || undefined,
+      'H5'
+    )
+    
+    // 存储后端返回的会话 ID
+    if (aiResponse.conversationId && !backendConversationId.value) {
+      backendConversationId.value = aiResponse.conversationId
+      sessionStorage.setItem(CONVERSATION_ID_KEY, aiResponse.conversationId)
+      console.log('存储后端会话 ID:', aiResponse.conversationId)
+    }
 
     // 添加 AI 消息
     const aiMessage = messageRepo.create({
@@ -336,6 +369,21 @@ function handleFeedback(messageId: string, isResolved: boolean) {
 
   // 显示反馈提示
   showToast(isResolved ? '感谢反馈！问题已标记为已解决。' : '我们会继续跟进您的问题。')
+}
+
+/**
+ * 处理点击"其他可能匹配的问题"
+ * 将选中的问题作为新输入自动发送查询
+ */
+function handleSelectRelatedQuestion(question: string) {
+  if (!question || isLoading.value) return
+  
+  // 将问题填入输入框并自动发送
+  inputText.value = question
+  // 使用 nextTick 确保输入框更新后再发送
+  nextTick(() => {
+    sendMessage()
+  })
 }
 
 function handleDeviceChange(newDevice: Device) {

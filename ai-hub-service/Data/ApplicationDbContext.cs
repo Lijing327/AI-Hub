@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using ai_hub_service.Models;
+using ai_hub_service.Modules.AiAudit.Entities;
 
 namespace ai_hub_service.Data;
 
@@ -27,6 +28,13 @@ public class ApplicationDbContext : DbContext
     /// 入库切片表（kb_chunk）
     /// </summary>
     public DbSet<KnowledgeChunk> KnowledgeChunks { get; set; }
+
+    // ========== AI 审计表 ==========
+    public DbSet<AiConversation> AiConversations { get; set; }
+    public DbSet<AiMessage> AiMessages { get; set; }
+    public DbSet<AiDecisionLog> AiDecisionLogs { get; set; }
+    public DbSet<AiRetrievalLog> AiRetrievalLogs { get; set; }
+    public DbSet<AiResponse> AiResponses { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -114,6 +122,119 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.TenantId);
             entity.HasIndex(e => e.ArticleId);
             entity.HasIndex(e => e.Hash);
+        });
+
+        // ========== AI 审计表配置 ==========
+        
+        // ai_conversation
+        modelBuilder.Entity<AiConversation>(entity =>
+        {
+            entity.ToTable("ai_conversation");
+            entity.HasKey(e => e.ConversationId);
+            entity.Property(e => e.ConversationId).HasColumnName("conversation_id");
+            entity.Property(e => e.TenantId).HasColumnName("tenant_id").HasMaxLength(64).IsRequired();
+            entity.Property(e => e.UserId).HasColumnName("user_id").HasMaxLength(64);
+            entity.Property(e => e.Channel).HasColumnName("channel").HasMaxLength(32).IsRequired();
+            entity.Property(e => e.StartedAt).HasColumnName("started_at").IsRequired();
+            entity.Property(e => e.EndedAt).HasColumnName("ended_at");
+            entity.Property(e => e.MetaJson).HasColumnName("meta_json").HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+
+            entity.HasIndex(e => new { e.TenantId, e.StartedAt }).IsDescending(false, true);
+            entity.HasIndex(e => new { e.UserId, e.StartedAt }).IsDescending(false, true);
+        });
+
+        // ai_message
+        modelBuilder.Entity<AiMessage>(entity =>
+        {
+            entity.ToTable("ai_message");
+            entity.HasKey(e => e.MessageId);
+            entity.Property(e => e.MessageId).HasColumnName("message_id");
+            entity.Property(e => e.ConversationId).HasColumnName("conversation_id").IsRequired();
+            entity.Property(e => e.Role).HasColumnName("role").HasMaxLength(16).IsRequired();
+            entity.Property(e => e.Content).HasColumnName("content").HasColumnType("NVARCHAR(MAX)").IsRequired();
+            entity.Property(e => e.ContentLen).HasColumnName("content_len");
+            entity.Property(e => e.IsMasked).HasColumnName("is_masked");
+            entity.Property(e => e.MaskedContent).HasColumnName("masked_content").HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+
+            entity.HasOne(e => e.Conversation)
+                  .WithMany(c => c.Messages)
+                  .HasForeignKey(e => e.ConversationId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.ConversationId, e.CreatedAt });
+            entity.HasIndex(e => new { e.Role, e.CreatedAt });
+        });
+
+        // ai_decision_log
+        modelBuilder.Entity<AiDecisionLog>(entity =>
+        {
+            entity.ToTable("ai_decision_log");
+            entity.HasKey(e => e.MessageId);
+            entity.Property(e => e.MessageId).HasColumnName("message_id");
+            entity.Property(e => e.IntentType).HasColumnName("intent_type").HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Confidence).HasColumnName("confidence").HasColumnType("DECIMAL(5,4)");
+            entity.Property(e => e.ModelName).HasColumnName("model_name").HasMaxLength(128);
+            entity.Property(e => e.PromptVersion).HasColumnName("prompt_version").HasMaxLength(32);
+            entity.Property(e => e.UseKnowledge).HasColumnName("use_knowledge");
+            entity.Property(e => e.FallbackReason).HasColumnName("fallback_reason").HasMaxLength(128);
+            entity.Property(e => e.TokensIn).HasColumnName("tokens_in");
+            entity.Property(e => e.TokensOut).HasColumnName("tokens_out");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+
+            entity.HasOne(e => e.Message)
+                  .WithOne(m => m.DecisionLog)
+                  .HasForeignKey<AiDecisionLog>(e => e.MessageId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => new { e.IntentType, e.CreatedAt });
+            entity.HasIndex(e => e.ModelName);
+        });
+
+        // ai_retrieval_log
+        modelBuilder.Entity<AiRetrievalLog>(entity =>
+        {
+            entity.ToTable("ai_retrieval_log");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").UseIdentityColumn();
+            entity.Property(e => e.MessageId).HasColumnName("message_id").IsRequired();
+            entity.Property(e => e.DocId).HasColumnName("doc_id").HasMaxLength(64).IsRequired();
+            entity.Property(e => e.DocTitle).HasColumnName("doc_title").HasMaxLength(256);
+            entity.Property(e => e.Score).HasColumnName("score").HasColumnType("DECIMAL(8,6)");
+            entity.Property(e => e.Rank).HasColumnName("rank");
+            entity.Property(e => e.ChunkId).HasColumnName("chunk_id").HasMaxLength(64);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+
+            entity.HasOne(e => e.Message)
+                  .WithMany(m => m.RetrievalLogs)
+                  .HasForeignKey(e => e.MessageId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.MessageId);
+            entity.HasIndex(e => e.DocId);
+        });
+
+        // ai_response
+        modelBuilder.Entity<AiResponse>(entity =>
+        {
+            entity.ToTable("ai_response");
+            entity.HasKey(e => e.MessageId);
+            entity.Property(e => e.MessageId).HasColumnName("message_id");
+            entity.Property(e => e.FinalAnswer).HasColumnName("final_answer").HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.ResponseTimeMs).HasColumnName("response_time_ms");
+            entity.Property(e => e.IsSuccess).HasColumnName("is_success");
+            entity.Property(e => e.ErrorType).HasColumnName("error_type").HasMaxLength(64);
+            entity.Property(e => e.ErrorDetail).HasColumnName("error_detail").HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+
+            entity.HasOne(e => e.Message)
+                  .WithOne(m => m.Response)
+                  .HasForeignKey<AiResponse>(e => e.MessageId)
+                  .OnDelete(DeleteBehavior.Cascade);
+
+            entity.HasIndex(e => e.ResponseTimeMs);
+            entity.HasIndex(e => e.IsSuccess);
         });
     }
 }

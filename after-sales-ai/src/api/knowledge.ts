@@ -114,6 +114,10 @@ export interface ChatRequest {
   question: string
   device_id?: string
   tenant_id?: string
+  // 审计相关：会话 ID（首次不传则自动创建，后续消息带上）
+  conversation_id?: string
+  user_id?: string
+  channel?: string
 }
 
 export interface ChatResponse {
@@ -147,6 +151,10 @@ export interface ChatResponse {
   }>
   /** 展示模式：conversation=仅对话气泡，不展示故障排查结构；未设置或 troubleshooting=完整结构 */
   reply_mode?: 'conversation' | 'troubleshooting'
+  /** 会话 ID（首次请求时自动创建，后续请求应带上） */
+  conversation_id?: string
+  /** 本条 assistant 消息 ID */
+  message_id?: string
 }
 
 /**

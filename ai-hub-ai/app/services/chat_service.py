@@ -42,12 +42,19 @@ AI_CHITCHAT_SYSTEM = (
     "回答控制在 150 字以内，语气友好专业。"
 )
 
-# 视为「身份/闲聊」、直接走 AI 不查知识库的句式（小写匹配）
+# 视为「身份/闲聊」、直接走 AI 不查知识库的句式
+# 分为完整匹配模式和关键词组合模式
 CHITCHAT_PATTERNS = (
     "你是谁", "你是啥", "你是什么", "你是哪个", "介绍一下你自己", "介绍下自己",
     "你能做什么", "你能干什么", "你有什么用", "你的作用", "你的功能",
     "你是干什么的", "你是干嘛的", "你是机器人吗", "你是真人吗", "你好",
+    "你会什么", "你可以做什么", "你能帮我什么",
 )
+
+# 能力咨询类问题的关键词组合（"你能/你可以/你会" + "解决/处理/分析/帮/诊断" + "什么/哪些/啥"）
+CAPABILITY_PREFIXES = ("你能", "你可以", "你会", "你能够")
+CAPABILITY_VERBS = ("解决", "处理", "分析", "帮", "诊断", "排查", "检测", "识别", "回答")
+CAPABILITY_SUFFIXES = ("什么", "哪些", "啥", "哪种", "多少")
 
 # 知识库无结果时，用 AI 从用户问题中提炼「检索关键词」，便于再次检索知识库
 # 知识库中多为简短故障描述，如：球阀密封圈漏气、油温过高、E101报警
@@ -78,13 +85,28 @@ def _parse_keywords_from_ai(text: Optional[str]) -> List[str]:
 
 
 def _is_chitchat_question(question: str) -> bool:
-    """判断是否为身份/闲聊类问题（如「你是谁」），这类问题直接走 AI，不查知识库"""
+    """
+    判断是否为身份/闲聊/能力咨询类问题（如「你是谁」「你能解决什么问题」）
+    这类问题直接走 AI，不查知识库
+    """
     if not question or not isinstance(question, str):
         return False
-    q = question.strip().lower()
+    q = question.strip()
     if len(q) > 50:
         return False
-    return any(p in q for p in CHITCHAT_PATTERNS)
+    
+    # 1. 完整模式匹配
+    if any(p in q for p in CHITCHAT_PATTERNS):
+        return True
+    
+    # 2. 能力咨询关键词组合匹配（"你能/你可以" + "解决/分析" + "什么/哪些"）
+    has_prefix = any(p in q for p in CAPABILITY_PREFIXES)
+    has_verb = any(v in q for v in CAPABILITY_VERBS)
+    has_suffix = any(s in q for s in CAPABILITY_SUFFIXES)
+    if has_prefix and has_verb and has_suffix:
+        return True
+    
+    return False
 
 
 def parse_causes(cause_text: Optional[str]) -> List[str]:

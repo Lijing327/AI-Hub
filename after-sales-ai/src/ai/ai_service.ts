@@ -1,18 +1,40 @@
 /**
  * AI 服务：从后端知识库获取数据并匹配问题
  * 现在通过Python服务进行搜索和AI回答，便于后续集成大模型
+ * 
+ * 审计功能：
+ * - 首次调用不传 conversation_id，后端自动创建
+ * - 后端返回 conversation_id，前端存储后续请求带上
+ * - 支持完整的对话回放和审计
  */
 import type { Device, AIResponse } from '@/models/types'
 import { chatSearch, type ChatResponse } from '@/api/knowledge'
 
+/** AI 响应（带审计字段） */
+export interface AIResponseWithAudit extends AIResponse {
+  relatedArticles?: Array<{ id: number; title: string; questionText?: string }>
+  /** 会话 ID（存储后续请求带上） */
+  conversationId?: string
+  /** 本条消息 ID */
+  messageId?: string
+}
+
 /**
  * 根据问题和设备信息生成 AI 回答
+ * @param questionText 用户问题
+ * @param device 设备信息
+ * @param conversationId 会话 ID（首次不传，后续带上）
+ * @param userId 用户 ID（可选）
+ * @param channel 渠道（默认 web）
  */
 export async function generateAIResponse(
   questionText: string,
-  device: Device
-): Promise<AIResponse & { relatedArticles?: Array<{ id: number; title: string; questionText?: string }> }> {
-  console.log('开始搜索知识库，问题:', questionText)
+  device: Device,
+  conversationId?: string,
+  userId?: string,
+  channel: string = 'web'
+): Promise<AIResponseWithAudit> {
+  console.log('开始搜索知识库，问题:', questionText, '会话:', conversationId)
   
   // 调用Python服务进行智能搜索和回答
   // Python服务会调用.NET后端搜索知识库，并进行数据解析和格式化
@@ -20,7 +42,10 @@ export async function generateAIResponse(
   const chatResponse = await chatSearch({
     question: questionText,
     device_id: device.deviceId,
-    tenant_id: 'default' // 暂时使用默认租户
+    tenant_id: 'default',
+    conversation_id: conversationId,
+    user_id: userId,
+    channel: channel
   })
 
   console.log('Python服务返回:', chatResponse)
@@ -32,7 +57,7 @@ export async function generateAIResponse(
 /**
  * 将Python服务的响应转换为前端AI响应格式
  */
-function convertChatResponseToAIResponse(chatResponse: ChatResponse): AIResponse & { relatedArticles?: Array<{ id: number; title: string; questionText?: string }> } {
+function convertChatResponseToAIResponse(chatResponse: ChatResponse): AIResponseWithAudit {
   return {
     issueCategory: chatResponse.issue_category,
     alarmCode: chatResponse.alarm_code,
@@ -49,7 +74,10 @@ function convertChatResponseToAIResponse(chatResponse: ChatResponse): AIResponse
       title: a.title,
       questionText: a.questionText
     })),
-    replyMode: chatResponse.reply_mode
+    replyMode: chatResponse.reply_mode,
+    // 审计字段
+    conversationId: chatResponse.conversation_id,
+    messageId: chatResponse.message_id
   }
 }
 

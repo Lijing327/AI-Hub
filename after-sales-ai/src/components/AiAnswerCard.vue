@@ -63,16 +63,27 @@
         </div>
       </div>
 
-      <!-- 其他可能匹配的问题 -->
-      <div class="section" v-if="relatedArticles && relatedArticles.length > 0">
-        <div class="section-title">其他可能匹配的问题</div>
-        <div class="related-articles">
-          <div v-for="article in relatedArticles" :key="article.id" class="related-article">
-            <div class="article-title">{{ article.title }}</div>
-            <div class="article-excerpt" v-if="article.excerpt">{{ article.excerpt }}</div>
-            <div class="article-question" v-else-if="article.questionText">{{ article.questionText }}</div>
-          </div>
+      <!-- 其他可能匹配的问题（可展开收起） -->
+      <div class="section collapsible-section" v-if="relatedArticles && relatedArticles.length > 0">
+        <div class="section-title clickable" @click="toggleRelatedExpand">
+          <span>其他可能匹配的问题</span>
+          <span class="expand-hint">({{ relatedArticles.length }}条)</span>
+          <span class="expand-icon" :class="{ expanded: isRelatedExpanded }">▼</span>
         </div>
+        <transition name="collapse">
+          <div class="related-articles" v-show="isRelatedExpanded">
+            <div 
+              v-for="article in relatedArticles" 
+              :key="article.id" 
+              class="related-article"
+              @click="handleSelectRelatedQuestion(article)"
+            >
+              <div class="article-title">{{ article.title }}</div>
+              <div class="article-excerpt" v-if="article.excerpt">{{ article.excerpt }}</div>
+              <div class="article-question" v-else-if="article.questionText">{{ article.questionText }}</div>
+            </div>
+          </div>
+        </transition>
       </div>
     </div>
 
@@ -87,8 +98,15 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits, withDefaults } from 'vue'
+import { ref, defineProps, defineEmits, withDefaults } from 'vue'
 import type { AIResponseMeta, RelatedArticle } from '@/models/types'
+
+// 展开/收起状态（默认收起）
+const isRelatedExpanded = ref(false)
+
+function toggleRelatedExpand() {
+  isRelatedExpanded.value = !isRelatedExpanded.value
+}
 
 interface Props {
   meta: AIResponseMeta
@@ -107,6 +125,7 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   createTicket: []
   feedback: [isResolved: boolean]
+  selectRelatedQuestion: [question: string]
 }>()
 
 function handleCreateTicket() {
@@ -115,6 +134,14 @@ function handleCreateTicket() {
 
 function handleFeedback(isResolved: boolean) {
   emit('feedback', isResolved)
+}
+
+function handleSelectRelatedQuestion(article: RelatedArticle) {
+  // 优先使用 title，其次 questionText
+  const question = article.title || article.questionText || ''
+  if (question && !props.readonly) {
+    emit('selectRelatedQuestion', question)
+  }
 }
 </script>
 
@@ -317,10 +344,60 @@ function handleFeedback(isResolved: boolean) {
   line-height: 1.5;
 }
 
+/* 可展开收起区域 */
+.collapsible-section .section-title.clickable {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+}
+
+.collapsible-section .section-title.clickable:hover {
+  color: #1890ff;
+}
+
+.expand-hint {
+  font-size: 12px;
+  color: #999;
+  font-weight: normal;
+}
+
+.expand-icon {
+  font-size: 12px;
+  color: #999;
+  transition: transform 0.3s ease;
+  margin-left: auto;
+}
+
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+/* 展开收起动画 */
+.collapse-enter-active,
+.collapse-leave-active {
+  transition: all 0.3s ease;
+  overflow: hidden;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  opacity: 0;
+  max-height: 0;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  opacity: 1;
+  max-height: 1000px;
+}
+
 .related-articles {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  margin-top: 12px;
 }
 
 .related-article {

@@ -57,5 +57,8 @@ class Settings(BaseSettings):
     CHROMA_PERSIST_PATH: str = "./data/chroma"
     KB_SQLSERVER_CONNECTION_STRING: str = ""
 
+    # 审计日志（调用 .NET internal API 记录对话全链路）
+    ENABLE_AUDIT_LOG: bool = True
+
 
 settings = Settings()
