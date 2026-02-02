@@ -2,7 +2,7 @@
  * 路由配置
  */
 
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import { initIfNeeded } from '@/store/storage'
 import Home from '@/views/Home.vue'
 import Chat from '@/views/Chat.vue'
@@ -51,7 +51,7 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHistory(),
+  history: createWebHashHistory(),
   routes
 })
 

@@ -1,4 +1,4 @@
-import { createRouter, createWebHistory } from 'vue-router'
+import { createRouter, createWebHashHistory } from 'vue-router'
 import KnowledgeList from '../views/KnowledgeList.vue'
 import KnowledgeEdit from '../views/KnowledgeEdit.vue'
 import KnowledgeDetail from '../views/KnowledgeDetail.vue'
@@ -7,7 +7,8 @@ import ConversationDetail from '../views/ConversationDetail.vue'
 import AuditStats from '../views/AuditStats.vue'
 
 const router = createRouter({
-  history: createWebHistory(),
+  // 使用 hash 模式，避免服务器配置问题
+  history: createWebHashHistory(),
   routes: [
     {
       path: '/',
