@@ -17,9 +17,12 @@ class Settings(BaseSettings):
     INTERNAL_TOKEN: str = "your-internal-token-change-in-production"
     DEFAULT_TENANT: str = "default"
 
-    # 附件（保留兼容）
+    # 附件（本地目录，开发用）
     ATTACHMENT_BASE_PATH: str = ""
     ATTACHMENT_BASE_URL: str = "http://localhost:5000/uploads"
+    # 服务器附件 API（生产用，与本地二选一）：列表接口 + 远程路径
+    ATTACHMENT_FILES_API_BASE_URL: str = ""  # 如 https://www.yonghongjituan.com:4023
+    ATTACHMENT_REMOTE_PATH: str = ""         # 如 diyi/永红造型线维修视频
 
     # DeepSeek AI（保留兼容）
     DEEPSEEK_API_KEY: str = ""

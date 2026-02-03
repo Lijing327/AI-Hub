@@ -127,6 +127,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Picture } from '@element-plus/icons-vue'
 import { knowledgeApi } from '../api/knowledge'
+import { getAttachmentDisplayUrl } from '../utils/attachment'
 import type { KnowledgeItemDto, AttachmentDto } from '../types/knowledge'
 
 const router = useRouter()
@@ -221,29 +222,7 @@ const formatFileSize = (bytes: number) => {
   return (bytes / (1024 * 1024)).toFixed(2) + ' MB'
 }
 
-// 处理文件URL，如果是绝对路径且指向localhost:5000，转换为相对路径以使用代理
-const getFileUrl = (fileUrl: string | undefined): string => {
-  if (!fileUrl) return ''
-  
-  // 如果是开发环境且URL指向localhost:5000，转换为相对路径使用代理
-  if (import.meta.env.DEV) {
-    // 处理 http://localhost:5000/uploads/... 格式
-    if (fileUrl.startsWith('http://localhost:5000/')) {
-      const relativePath = fileUrl.replace('http://localhost:5000', '')
-      console.log('转换URL:', fileUrl, '->', relativePath)
-      return relativePath
-    }
-    // 处理 http://localhost:5000 格式（无尾部斜杠）
-    if (fileUrl.startsWith('http://localhost:5000')) {
-      const relativePath = fileUrl.replace('http://localhost:5000', '')
-      console.log('转换URL:', fileUrl, '->', relativePath)
-      return relativePath
-    }
-  }
-  
-  // 生产环境或已经是相对路径，直接返回
-  return fileUrl
-}
+const getFileUrl = getAttachmentDisplayUrl
 
 // 获取所有图片的预览列表
 const getImagePreviewList = (attachments: AttachmentDto[] | undefined): string[] => {

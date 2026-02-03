@@ -15,5 +15,9 @@ export const apiConfig = {
   internalToken: import.meta.env.VITE_INTERNAL_TOKEN || 'test-token-123',
   
   // 默认租户 ID
-  defaultTenant: import.meta.env.VITE_DEFAULT_TENANT || 'default'
+  defaultTenant: import.meta.env.VITE_DEFAULT_TENANT || 'default',
+
+  // 附件访问地址（生产环境：数据库可能存的是本地 URL，展示时重写为远程地址）
+  attachmentBaseUrl: import.meta.env.VITE_ATTACHMENT_BASE_URL || '',
+  attachmentRemotePath: import.meta.env.VITE_ATTACHMENT_REMOTE_PATH || ''
 }

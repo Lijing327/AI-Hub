@@ -1,14 +1,16 @@
 """
 附件查找与元数据构建
 在固定目录中根据引用名查找文件，并构建可供 .NET 批量创建用的元数据
+支持两种模式：本地目录（ATTACHMENT_BASE_PATH）或远程 API（api/files/list）
 """
 import os
 import re
 import unicodedata
 from pathlib import Path
-from typing import List, Optional
+from typing import Any, List, Optional
 from urllib.parse import quote
 
+import httpx
 from app.core.config import settings
 from app.core.logging_config import get_logger
 
@@ -69,6 +71,34 @@ def _build_file_info(base_path: Path, file_path: Path, base_url: str) -> dict:
     }
 
 
+def rewrite_attachment_url_to_remote(url: str) -> str:
+    """
+    若配置了远程附件（ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH），
+    将数据库里存的本地 URL（如 localhost:5000/uploads/xxx.jpg）重写为远程地址，
+    这样前端展示/下载会走服务器 4023。
+    """
+    if not url or not isinstance(url, str):
+        return url or ""
+    base = (settings.ATTACHMENT_FILES_API_BASE_URL or "").strip()
+    remote_path = (settings.ATTACHMENT_REMOTE_PATH or "").replace("\\", "/").strip().strip("/")
+    if not base or not remote_path:
+        return url
+    # 仅重写“看起来像本地”的 URL
+    if "localhost" not in url and "/uploads/" not in url:
+        local_base = (settings.ATTACHMENT_BASE_URL or "").strip()
+        if not local_base or not url.startswith(local_base):
+            return url
+    # 从 URL 取出文件名（最后一段）
+    from urllib.parse import unquote
+    parts = url.rstrip("/").split("/")
+    filename = unquote(parts[-1]) if parts else ""
+    if not filename:
+        return url
+    encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
+    encoded_name = quote(filename, safe="")
+    return f"{base.rstrip('/')}/uploads/{encoded_path}/{encoded_name}"
+
+
 def extract_filename_from_reference(text: str) -> Optional[str]:
     """
     从文本引用中提取文件名
@@ -94,25 +124,140 @@ def extract_filename_from_reference(text: str) -> Optional[str]:
     return filename.strip() or None
 
 
+def _parse_remote_file_list(response_data: Any, base_url: str) -> List[dict]:
+    """
+    解析 api/files/list 返回的 JSON，统一为 [{"file_name","url","relative_path","type","size","directory"}]
+    接口格式：{ "code": 0, "message": "操作成功", "data": [ { "name", "relativePath", "directory", "size" } ] }
+    """
+    base_url = (base_url or "").rstrip("/")
+    items: List[dict] = []
+    if isinstance(response_data, list):
+        items = response_data
+    elif isinstance(response_data, dict):
+        items = response_data.get("data") or response_data.get("files") or response_data.get("list") or []
+    if not items:
+        return []
+    result = []
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        name = it.get("name") or it.get("fileName") or it.get("filename") or ""
+        # relativePath 可能为 "diyi\\永红造型线维修视频\\xxx.jpg"
+        raw_path = it.get("path") or it.get("relativePath") or name
+        relative_path = raw_path.replace("\\", "/") if isinstance(raw_path, str) else str(raw_path)
+        if not name and relative_path:
+            name = relative_path.split("/")[-1]
+        if not name:
+            continue
+        # 无 url 时用 base_url + 编码后的路径拼出访问地址
+        if it.get("url"):
+            url = it["url"]
+        elif base_url and relative_path:
+            encoded = "/".join(quote(part, safe="") for part in relative_path.split("/"))
+            url = f"{base_url.rstrip('/')}/uploads/{encoded}"
+        else:
+            url = ""
+        ext = Path(name).suffix.lower()
+        is_dir = it.get("directory", False)
+        result.append({
+            "path": relative_path,
+            "url": url,
+            "type": _guess_asset_type_by_ext(ext) if not is_dir else "directory",
+            "size": it.get("size") or it.get("fileSize") or 0,
+            "file_name": name,
+            "relative_path": relative_path,
+            "directory": is_dir,
+        })
+    return result
+
+
 class AttachmentService:
-    """附件查找服务，依赖配置中的 ATTACHMENT_BASE_PATH / ATTACHMENT_BASE_URL"""
+    """附件查找服务：本地目录（ATTACHMENT_BASE_PATH）或远程 api/files/list 二选一"""
 
     def __init__(
         self,
         base_path: Optional[str] = None,
         base_url: Optional[str] = None,
+        files_api_base_url: Optional[str] = None,
+        remote_path: Optional[str] = None,
     ):
         self.base_path = (base_path or settings.ATTACHMENT_BASE_PATH or "").strip()
-        self.base_url = base_url or settings.ATTACHMENT_BASE_URL or ""
+        self.base_url = (base_url or settings.ATTACHMENT_BASE_URL or "").strip()
+        self.remote_base = (files_api_base_url or settings.ATTACHMENT_FILES_API_BASE_URL or "").strip()
+        self.remote_path = (remote_path or settings.ATTACHMENT_REMOTE_PATH or "").strip()
+
+    def _fetch_remote_file_list(self) -> List[dict]:
+        """调用 GET api/files/list?path=... 获取远程文件列表"""
+        if not self.remote_base or not self.remote_path:
+            return []
+        url = f"{self.remote_base.rstrip('/')}/api/files/list"
+        params = {"path": self.remote_path}
+        try:
+            with httpx.Client(timeout=15.0) as client:
+                resp = client.get(url, params=params)
+                resp.raise_for_status()
+                data = resp.json()
+        except Exception as e:
+            logger.warning("调用远程附件列表 API 失败: %s", e)
+            return []
+        return _parse_remote_file_list(data, self.remote_base)
+
+    def _find_attachment_files_remote(self, filename: str) -> List[dict]:
+        """基于远程 api/files/list 结果按文件名/路径匹配（只返回文件，不含 directory:true）"""
+        clean_filename = filename.strip().strip('"""\'""\'《》【】[]()（）').strip()
+        if "." in clean_filename:
+            clean_filename = Path(clean_filename).stem
+        norm_clean = _normalize_for_match(clean_filename)
+        logger.debug("远程查找附件: 原始='%s', 清理后='%s', 规范化='%s'", filename, clean_filename, norm_clean)
+
+        all_items = self._fetch_remote_file_list()
+        if not all_items:
+            logger.warning("远程附件列表为空: path=%s", self.remote_path)
+            return []
+
+        # 只参与匹配的文件（排除目录项）
+        file_only = [f for f in all_items if not f.get("directory")]
+
+        # 1) 精确匹配：文件名 stem 与 norm_clean 一致
+        for f in file_only:
+            stem = Path(f.get("file_name", "")).stem
+            if _normalize_for_match(stem) == norm_clean:
+                logger.info("找到远程附件（精确）: %s -> %s", clean_filename, f.get("file_name"))
+                return [f]
+        # 2) 路径中含“文件夹名”匹配：relative_path 的某一段与 norm_clean 一致，返回该路径下所有文件
+        segment_matched = []
+        for f in file_only:
+            rp = (f.get("relative_path") or f.get("path") or "").replace("\\", "/")
+            parts = rp.split("/")
+            for part in parts:
+                if _normalize_for_match(Path(part).stem) == norm_clean:
+                    segment_matched.append(f)
+                    break
+        if segment_matched:
+            logger.info("找到远程附件（路径段）: %s 共 %d 个", clean_filename, len(segment_matched))
+            return segment_matched
+        # 3) 模糊：stem 包含或被包含
+        for f in file_only:
+            stem = Path(f.get("file_name", "")).stem
+            norm_stem = _normalize_for_match(stem)
+            if norm_clean in norm_stem or norm_stem in norm_clean:
+                logger.info("找到远程附件（模糊）: %s -> %s", clean_filename, f.get("file_name"))
+                return [f]
+        logger.warning("未找到远程附件: %s (清理后: %s)", filename, clean_filename)
+        return []
 
     def find_attachment_files(self, filename: str) -> List[dict]:
         """
-        在固定目录中递归查找附件
+        在固定目录或远程 api/files/list 中查找附件
         - 命中文件：返回 1 条
         - 命中文件夹：返回该目录下所有文件（递归）
         - 未命中：返回 []
         返回元素形态：{"path","url","type","size","file_name","relative_path"}
         """
+        # 优先使用远程 API（生产环境服务器附件）
+        if self.remote_base and self.remote_path:
+            return self._find_attachment_files_remote(filename)
+
         if not self.base_path:
             logger.debug("ATTACHMENT_BASE_PATH 未配置，跳过文件查找: %s", filename)
             return []

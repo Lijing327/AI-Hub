@@ -152,6 +152,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElUpload, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { knowledgeApi, attachmentApi } from '../api/knowledge'
+import { getAttachmentDisplayUrl } from '../utils/attachment'
 import type { CreateKnowledgeItemDto, UpdateKnowledgeItemDto, AttachmentDto } from '../types/knowledge'
 
 const router = useRouter()
@@ -429,13 +430,13 @@ const loadData = async () => {
     // 解析适用范围 JSON 为键值对列表
     parseScopeJson(item.scopeJson)
 
-    // 加载附件（后端返回 assets）
+    // 加载附件（后端返回 assets），展示 URL 使用重写后的远程地址
     const assets = item.assets
     if (assets && assets.length > 0) {
       fileList.value = assets.map((att: AttachmentDto) => ({
         uid: att.id,
         name: att.fileName,
-        url: att.fileUrl ?? att.url,
+        url: getAttachmentDisplayUrl(att.fileUrl ?? att.url),
         response: { id: att.id }
       }))
     }

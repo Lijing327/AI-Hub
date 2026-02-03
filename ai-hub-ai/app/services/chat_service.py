@@ -17,6 +17,7 @@ from app.clients.deepseek_client import DeepSeekClient
 from app.schemas.chat import ChatRequest, ChatResponse, ResourceItem
 from app.services.query_service import QueryService
 from app.repositories.kb_article_repo import KbArticleRepository, get_assets_by_article_id
+from app.services.attachment_service import rewrite_attachment_url_to_remote
 
 logger = get_logger(__name__)
 
@@ -379,7 +380,7 @@ class ChatService:
                         id=a["id"],
                         name=a["name"],
                         type=a["type"],
-                        url=a["url"],
+                        url=rewrite_attachment_url_to_remote(a["url"]),
                         size=a.get("size"),
                         duration=a.get("duration"),
                     )
@@ -604,7 +605,7 @@ class ChatService:
                             id=a["id"],
                             name=a["name"],
                             type=a["type"],
-                            url=a["url"],
+                            url=rewrite_attachment_url_to_remote(a["url"]),
                             size=a.get("size"),
                             duration=a.get("duration"),
                         )
