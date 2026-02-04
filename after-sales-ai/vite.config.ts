@@ -16,19 +16,20 @@ export default defineConfig({
     port: 3000,
     host: '0.0.0.0', // 允许通过局域网 IP 访问
     open: true,
+    // 仅开发环境生效：代理到本机 .NET / Python，生产环境用 .env.production 里的完整地址
     proxy: {
       '/api': {
-        target: 'http://localhost:5000',
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5000',
         changeOrigin: true,
         secure: false
       },
       '/uploads': {
-        target: 'http://localhost:5000',
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5000',
         changeOrigin: true,
         secure: false
       },
       '/python-api': {
-        target: 'http://localhost:8000',
+        target: process.env.VITE_DEV_PYTHON_TARGET || 'http://localhost:8000',
         changeOrigin: true,
         secure: false,
         rewrite: (path) => path.replace(/^\/python-api/, '')

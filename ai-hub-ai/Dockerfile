@@ -19,7 +19,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 # 3️⃣ 拷贝源码
 COPY . .
 
+# 默认 8000，可通过环境变量 PORT 覆盖
+ENV PORT=8000
 EXPOSE 8000
 
-# 4️⃣ 启动服务
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# 4️⃣ 启动服务（端口由 PORT 环境变量决定，与 main.py 一致）
+CMD ["python", "main.py"]
