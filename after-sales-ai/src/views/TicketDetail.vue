@@ -72,8 +72,7 @@ import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TicketStatusTag from '@/components/TicketStatusTag.vue'
 import { ticketRepo, ticketLogRepo, deviceRepo } from '@/store/repositories'
-import type { Ticket, TicketLog, Device } from '@/models/types'
-import { nanoid } from 'nanoid'
+import type { Ticket, TicketLog } from '@/models/types'
 
 const route = useRoute()
 const router = useRouter()

@@ -40,7 +40,7 @@ export const sessionRepo = {
     return sessionStorage.update(sessionId, updates)
   },
   getByDeviceId: (deviceId: string): ChatSession[] => {
-    const sessions = sessionStorage.getAll()
+    const sessions = sessionStorage.getAll() as ChatSession[]
     return sessions.filter((s) => s.deviceId === deviceId)
       .sort((a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime())
   }

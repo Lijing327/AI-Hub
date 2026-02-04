@@ -13,12 +13,7 @@ const api = axios.create({
   }
 })
 
-// 请求拦截器：添加租户ID（暂时使用默认值）
-api.interceptors.request.use((config) => {
-  // 暂时不处理登录，使用默认租户ID
-  config.headers['X-Tenant-Id'] = apiConfig.defaultTenant
-  return config
-})
+// 智能客服不做租户隔离，无需添加租户头
 
 // 后端知识条目 DTO
 export interface KnowledgeArticleDto {
@@ -113,7 +108,6 @@ export async function getKnowledgeArticleById(
 export interface ChatRequest {
   question: string
   device_id?: string
-  tenant_id?: string
   // 审计相关：会话 ID（首次不传则自动创建，后续消息带上）
   conversation_id?: string
   user_id?: string

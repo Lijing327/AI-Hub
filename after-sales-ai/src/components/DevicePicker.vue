@@ -28,7 +28,7 @@ interface Props {
   selectedDeviceId?: string
 }
 
-const props = defineProps<Props>()
+defineProps<Props>()
 
 const emit = defineEmits<{
   select: [device: Device]

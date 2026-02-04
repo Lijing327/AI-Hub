@@ -75,8 +75,8 @@ export async function initIfNeeded(): Promise<void> {
   const version = localStorage.getItem(VERSION_KEY)
   if (version === CURRENT_VERSION) {
     // 已初始化，检查是否有数据
-    const customers = getItem(KEYS.customers)
-    if (customers && customers.length > 0) {
+    const customers = getItem<any[]>(KEYS.customers)
+    if (customers && Array.isArray(customers) && customers.length > 0) {
       return // 已有数据，不覆盖
     }
   }
@@ -135,7 +135,7 @@ export function exportAllAsJson(): string {
 
 // 会话相关
 export const sessionStorage = {
-  getAll: () => getItem<typeof KEYS.sessions extends `${string}_${infer K}` ? any[] : never>(KEYS.sessions) || [],
+  getAll: (): any[] => getItem<any[]>(KEYS.sessions) || [],
   add: (session: any) => appendItem(KEYS.sessions, session),
   update: (sessionId: string, updates: any) => updateItemInArray(KEYS.sessions, 'sessionId', sessionId, updates),
   getById: (sessionId: string) => {

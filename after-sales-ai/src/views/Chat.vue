@@ -2,16 +2,24 @@
   <div class="chat-page">
     <!-- 顶部栏 -->
     <div class="chat-header">
-      <button class="btn-back" @click="goBack">←</button>
+      <button class="btn-back" @click="goBack" aria-label="返回">←</button>
       <div class="device-info" @click="showDevicePicker = true">
-        <div class="device-model">{{ device?.model }}</div>
-        <div class="device-serial">SN: {{ device?.serialNo }}</div>
+        <div class="device-model">{{ isDefaultDevice ? '智能客服' : device?.model }}</div>
+        <div class="device-serial">{{ isDefaultDevice ? '点击可切换设备' : `SN: ${device?.serialNo}` }}</div>
       </div>
       <button class="btn-history" @click="goToHistory">历史</button>
     </div>
 
     <!-- 聊天区 -->
     <div class="chat-messages" ref="messagesContainer">
+      <!-- 空状态欢迎语 -->
+      <div v-if="messages.length === 0 && !isLoading" class="welcome-bubble">
+        <div class="welcome-avatar">AI</div>
+        <div class="welcome-text">
+          <p>您好，我是造型机售后智能客服。</p>
+          <p>您可以描述设备现象、报警码或操作问题，我会帮您排查并给出步骤与方案。</p>
+        </div>
+      </div>
       <div v-for="message in messages" :key="message.messageId" class="message-wrapper">
         <ChatMessageBubble :message="message" />
         <!-- 仅在有结构化回复时展示故障排查卡片；conversation 模式（如「你是谁」）只展示对话气泡 -->
@@ -77,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
+import { ref, onMounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChatMessageBubble from '@/components/ChatMessageBubble.vue'
 import AiAnswerCard from '@/components/AiAnswerCard.vue'
@@ -85,7 +93,7 @@ import AiAnswerCard from '@/components/AiAnswerCard.vue'
 import DevicePicker from '@/components/DevicePicker.vue'
 import { sessionRepo, messageRepo, aiMetaRepo, ticketRepo, ticketLogRepo, deviceRepo, feedbackRepo } from '@/store/repositories'
 import { generateAIResponse } from '@/ai/ai_service'
-import type { ChatSession, ChatMessage, Device, AIResponseMeta, Ticket, TicketLog, RelatedArticle, TechnicalResource } from '@/models/types'
+import type { ChatMessage, Device, AIResponseMeta, RelatedArticle, TechnicalResource } from '@/models/types'
 // import demoQuestionsData from '@/mock/demo_questions.json' // 已移除演示问题
 
 const route = useRoute()
@@ -141,11 +149,20 @@ function getTechnicalResources(messageId: string): TechnicalResource[] | undefin
   return meta?.technicalResources
 }
 
+// 是否从欢迎页直接进入（未选设备，使用默认）
+const isDefaultDevice = ref(false)
+
 onMounted(async () => {
   // 初始化设备
   allDevices.value = deviceRepo.getAll()
-  const deviceId = route.query.deviceId as string
+  let deviceId = route.query.deviceId as string
   const customerId = route.query.customerId as string
+
+  // 无 deviceId 时使用默认设备（欢迎页「开始咨询」进入）
+  if (!deviceId && allDevices.value.length > 0) {
+    deviceId = allDevices.value[0].deviceId
+    isDefaultDevice.value = true
+  }
 
   if (!deviceId) {
     router.push('/')
@@ -322,10 +339,10 @@ async function sendMessage() {
 // }
 // 已移除快捷问题功能
 
-function handleCreateTicket(messageId: string) {
+function handleCreateTicket(_messageId: string) {
   if (!device.value || !currentSessionId.value) return
 
-  const aiMeta = getAIMeta(messageId)
+  const aiMeta = getAIMeta(_messageId)
   if (!aiMeta) return
 
   // 创建工单
@@ -334,7 +351,7 @@ function handleCreateTicket(messageId: string) {
     deviceId: currentDeviceId.value,
     sessionId: currentSessionId.value,
     title: `工单：${aiMeta.issueCategory}${aiMeta.alarmCode ? ' - ' + aiMeta.alarmCode : ''}`,
-    description: `问题描述：${messages.value.find(m => m.messageId === messageId)?.content || ''}`,
+    description: `问题描述：${messages.value.find(m => m.messageId === _messageId)?.content || ''}`,
     status: '待处理',
     priority: '中',
     createdAt: new Date().toISOString()
@@ -358,7 +375,7 @@ function handleCreateTicket(messageId: string) {
   router.push(`/ticket/${ticket.ticketId}`)
 }
 
-function handleFeedback(messageId: string, isResolved: boolean) {
+function handleFeedback(_messageId: string, isResolved: boolean) {
   if (!currentSessionId.value) return
 
   // 创建反馈记录
@@ -411,7 +428,7 @@ function scrollToBottom() {
 }
 
 function goBack() {
-  router.push('/')
+  router.push('/') // 返回欢迎页
 }
 
 function goToHistory() {
@@ -495,6 +512,47 @@ watch(messages, () => {
   overflow-y: auto;
   padding: 16px;
   -webkit-overflow-scrolling: touch;
+}
+
+.welcome-bubble {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  padding: 16px;
+  margin-bottom: 16px;
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 8px rgba(0, 0, 0, 0.06);
+}
+
+.welcome-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 100%);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.welcome-text {
+  flex: 1;
+}
+
+.welcome-text p {
+  margin: 0 0 6px;
+  font-size: 15px;
+  color: #333;
+  line-height: 1.5;
+}
+
+.welcome-text p:last-child {
+  margin-bottom: 0;
+  color: #666;
 }
 
 .message-wrapper {

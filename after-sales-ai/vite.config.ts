@@ -3,6 +3,9 @@ import vue from '@vitejs/plugin-vue'
 import { resolve } from 'path'
 
 export default defineConfig({
+  // 部署在子路径（如 /cs/）时必须设置 base，否则 JS/CSS 请求到根路径导致白屏
+  // 部署到根路径时可设置 VITE_BASE_PATH=/ 再构建
+  base: process.env.VITE_BASE_PATH || '/cs/',
   plugins: [vue()],
   resolve: {
     alias: {

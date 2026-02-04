@@ -34,7 +34,7 @@
         <DevicePicker
           v-else
           :devices="availableDevices"
-          :selected-device-id="selectedDeviceId"
+          :selected-device-id="selectedDeviceId ?? undefined"
           @select="selectDevice"
         />
       </div>
@@ -54,7 +54,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import DevicePicker from '@/components/DevicePicker.vue'
 import { customerRepo, deviceRepo } from '@/store/repositories'

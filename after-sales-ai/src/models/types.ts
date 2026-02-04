@@ -77,6 +77,8 @@ export interface AIResponseMeta {
   technicalResources?: TechnicalResource[] // 技术资料（附件）
   /** 展示模式：conversation=仅对话气泡，不展示故障排查卡片 */
   replyMode?: 'conversation' | 'troubleshooting'
+  /** 安全提示文案 */
+  safetyTip?: string
 }
 
 // 工单

@@ -48,7 +48,7 @@
       </div>
 
       <!-- 安全提示 -->
-      <div class="safety-tip">
+      <div v-if="meta.safetyTip" class="safety-tip">
         {{ meta.safetyTip }}
       </div>
 

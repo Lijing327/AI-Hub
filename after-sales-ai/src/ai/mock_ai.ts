@@ -46,7 +46,7 @@ export async function generateAIResponse(
 /**
  * 处理报警码问题
  */
-function handleAlarmCode(alarmCode: string, device: Device): AIResponse {
+function handleAlarmCode(alarmCode: string, _device: Device): AIResponse {
   const kb = kbSamples as KbSample[]
   let category = '报警码'
   let confidence = 0.85
@@ -218,7 +218,7 @@ function handleAlarmCode(alarmCode: string, device: Device): AIResponse {
 /**
  * 处理送料异常
  */
-function handleFeedingIssue(device: Device): AIResponse {
+function handleFeedingIssue(_device: Device): AIResponse {
   const kb = kbSamples as KbSample[]
   const citedDocs = kb.filter((k) => k.kbId === 'kb_004').map((k) => ({
     kbId: k.kbId,
@@ -275,7 +275,7 @@ function handleFeedingIssue(device: Device): AIResponse {
 /**
  * 处理压力异常
  */
-function handlePressureIssue(device: Device): AIResponse {
+function handlePressureIssue(_device: Device): AIResponse {
   const kb = kbSamples as KbSample[]
   const citedDocs = kb.filter((k) => k.kbId === 'kb_005').map((k) => ({
     kbId: k.kbId,
@@ -332,7 +332,7 @@ function handlePressureIssue(device: Device): AIResponse {
 /**
  * 处理温度异常
  */
-function handleTemperatureIssue(device: Device): AIResponse {
+function handleTemperatureIssue(_device: Device): AIResponse {
   const kb = kbSamples as KbSample[]
   const citedDocs = kb.filter((k) => k.kbId === 'kb_006').map((k) => ({
     kbId: k.kbId,
@@ -389,7 +389,7 @@ function handleTemperatureIssue(device: Device): AIResponse {
 /**
  * 处理信息不足的情况
  */
-function handleInsufficientInfo(device: Device): AIResponse {
+function handleInsufficientInfo(_device: Device): AIResponse {
   return {
     issueCategory: '其他',
     confidence: 0.3,
