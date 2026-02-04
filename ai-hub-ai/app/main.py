@@ -5,6 +5,7 @@
 - 注册路由、中间件、全局异常处理
 """
 from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.core.config import settings
@@ -38,6 +39,20 @@ def create_app() -> FastAPI:
             status_code=exc.status_code,
             content={"detail": exc.detail or exc.message},
         )
+
+    # 跨域：智能客服前端在 4013，请求本服务 6714 会跨域，必须允许
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "https://www.yonghongjituan.com:4013",
+            "http://www.yonghongjituan.com:4013",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
 
     # 中间件
     app.add_middleware(RequestLogMiddleware)
