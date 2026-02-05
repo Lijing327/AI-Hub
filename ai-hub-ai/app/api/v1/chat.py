@@ -88,9 +88,12 @@ async def search_and_answer(request: ChatRequest):
         
         # 5. 记录决策（关联到 user message）
         if audit.is_enabled and user_message_id and response:
-            # 判断意图类型：闲聊/能力咨询 vs 故障解决
-            is_chitchat = _is_chitchat_question(request.question)
-            intent_type = "chat" if is_chitchat else "solution"
+            # 判断意图类型：转人工 / 闲聊 / 故障解决
+            if getattr(response, "reply_mode", None) == "handoff":
+                intent_type = "handoff"
+            else:
+                is_chitchat = _is_chitchat_question(request.question)
+                intent_type = "chat" if is_chitchat else "solution"
             
             # 判断是否使用了知识库（cited_docs 非空）
             use_knowledge = bool(response.cited_docs)

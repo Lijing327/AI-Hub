@@ -75,8 +75,8 @@ export interface AIResponseMeta {
   issueCategory: string
   relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
   technicalResources?: TechnicalResource[] // 技术资料（附件）
-  /** 展示模式：conversation=仅对话气泡，不展示故障排查卡片 */
-  replyMode?: 'conversation' | 'troubleshooting'
+  /** 展示模式：conversation=仅对话气泡；handoff=转人工引导；troubleshooting=故障排查卡片 */
+  replyMode?: 'conversation' | 'troubleshooting' | 'handoff'
   /** 安全提示文案 */
   safetyTip?: string
 }

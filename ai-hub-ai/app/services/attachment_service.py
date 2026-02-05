@@ -71,32 +71,66 @@ def _build_file_info(base_path: Path, file_path: Path, base_url: str) -> dict:
     }
 
 
+def _is_local_url(u: str) -> bool:
+    """判断 URL 是否为本地地址（localhost / 127.0.0.1）"""
+    if not u:
+        return False
+    return "localhost" in u or "127.0.0.1" in u
+
+
 def rewrite_attachment_url_to_remote(url: str) -> str:
     """
-    若配置了远程附件（ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH），
-    将数据库里存的本地 URL（如 localhost:5000/uploads/xxx.jpg）重写为远程地址，
-    这样前端展示/下载会走服务器 4023。
+    将数据库/接口里存的本地或相对附件 URL 重写为生产可访问地址，
+    避免前端点击附件跳转到 localhost。
+    优先使用 ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH；
+    否则用 ATTACHMENT_BASE_URL（如 https://域名:4023/uploads）拼出可访问链接。
+    若配置的 BASE_URL 仍是本地地址，则优先用 FILES_API_BASE_URL 拼链接，避免误用默认值。
     """
     if not url or not isinstance(url, str):
         return url or ""
-    base = (settings.ATTACHMENT_FILES_API_BASE_URL or "").strip()
-    remote_path = (settings.ATTACHMENT_REMOTE_PATH or "").replace("\\", "/").strip().strip("/")
-    if not base or not remote_path:
-        return url
-    # 仅重写“看起来像本地”的 URL
-    if "localhost" not in url and "/uploads/" not in url:
-        local_base = (settings.ATTACHMENT_BASE_URL or "").strip()
-        if not local_base or not url.startswith(local_base):
-            return url
-    # 从 URL 取出文件名（最后一段）
     from urllib.parse import unquote
-    parts = url.rstrip("/").split("/")
+    url = url.strip()
+    # 判断是否为“本地/需重写”的 URL
+    is_local = (
+        "localhost" in url
+        or url.startswith("http://127.0.0.1")
+        or (url.startswith("/uploads/") or url.startswith("uploads/"))
+    )
+    if not is_local:
+        return url
+
+    parts = url.rstrip("/").replace("\\", "/").split("/")
     filename = unquote(parts[-1]) if parts else ""
     if not filename:
         return url
-    encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
+
+    remote_path = (settings.ATTACHMENT_REMOTE_PATH or "").replace("\\", "/").strip().strip("/")
     encoded_name = quote(filename, safe="")
-    return f"{base.rstrip('/')}/uploads/{encoded_path}/{encoded_name}"
+
+    # 优先：ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH（且非本地，避免用错）
+    base = (settings.ATTACHMENT_FILES_API_BASE_URL or "").strip()
+    if base and not _is_local_url(base):
+        if remote_path:
+            encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
+            return f"{base.rstrip('/')}/uploads/{encoded_path}/{encoded_name}"
+        return f"{base.rstrip('/')}/uploads/{encoded_name}"
+
+    # 兜底：ATTACHMENT_BASE_URL（仅当其为非本地地址时使用，否则仍会跳到 localhost）
+    attachment_base = (settings.ATTACHMENT_BASE_URL or "").strip()
+    if attachment_base and not _is_local_url(attachment_base):
+        if remote_path:
+            encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
+            return f"{attachment_base.rstrip('/')}/{encoded_path}/{encoded_name}"
+        return f"{attachment_base.rstrip('/')}/{encoded_name}"
+
+    # 若两者未配置或均为本地：再用 FILES_API_BASE_URL 拼一次（可能通过环境变量注入）
+    if base:
+        if remote_path:
+            encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
+            return f"{base.rstrip('/')}/uploads/{encoded_path}/{encoded_name}"
+        return f"{base.rstrip('/')}/uploads/{encoded_name}"
+
+    return url
 
 
 def extract_filename_from_reference(text: str) -> Optional[str]:

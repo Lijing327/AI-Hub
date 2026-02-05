@@ -18,6 +18,7 @@ from app.schemas.chat import ChatRequest, ChatResponse, ResourceItem
 from app.services.query_service import QueryService
 from app.repositories.kb_article_repo import KbArticleRepository, get_assets_by_article_id
 from app.services.attachment_service import rewrite_attachment_url_to_remote
+from app.services.intent_service import classify_intent, Intent
 
 logger = get_logger(__name__)
 
@@ -41,6 +42,12 @@ AI_FALLBACK_SYSTEM = (
 AI_CHITCHAT_SYSTEM = (
     "你是造型机设备的售后技术支持助手。请用一两句话简短介绍自己的身份和能提供的帮助（如：设备故障、报警码、操作问题等）。"
     "回答控制在 150 字以内，语气友好专业。"
+)
+
+# 转人工（handoff）固定话术，不查库；前端据此展示转人工卡片/电话
+HANDOFF_HINT = (
+    "好的，我可以帮你转人工。请提供：设备型号/故障现象/发生时间/现场照片或视频（如有）/联系方式（电话或微信）。"
+    "我将转交工程师跟进。人工客服电话：0312-7027666"
 )
 
 # 视为「身份/闲聊」、直接走 AI 不查知识库的句式
@@ -87,27 +94,66 @@ def _parse_keywords_from_ai(text: Optional[str]) -> List[str]:
 
 def _is_chitchat_question(question: str) -> bool:
     """
-    判断是否为身份/闲聊/能力咨询类问题（如「你是谁」「你能解决什么问题」）
-    这类问题直接走 AI，不查知识库
+    兜底规则：意图识别不可用时，判断是否为身份/闲聊/能力咨询（不查知识库）。
+    仅做规则匹配，避免误伤；「你是什么故障」等含故障词由 intent 或本规则 solution 优先。
     """
     if not question or not isinstance(question, str):
         return False
     q = question.strip()
     if len(q) > 50:
         return False
-    
-    # 1. 完整模式匹配
+
+    # 0. 含故障/报警等词一律不视为闲聊，走查库
+    if any(k in q for k in ("故障", "报警", "异常", "不射砂", "停机", "报错", "怎么处理", "怎么办")):
+        return False
+
+    # 1. 极短句止血（LLM 挂了也不误查库）：严格白名单
+    if len(q) <= 4 and q in ("你是", "你好", "在吗", "哈喽"):
+        return True
+    if q in ("你是谁", "你是啥", "你是什么", "你是哪个"):
+        return True
+
+    # 2. 完整模式匹配
     if any(p in q for p in CHITCHAT_PATTERNS):
         return True
-    
-    # 2. 能力咨询关键词组合匹配（"你能/你可以" + "解决/分析" + "什么/哪些"）
+
+    # 3. 能力咨询关键词组合匹配（"你能/你可以" + "解决/分析" + "什么/哪些"）
     has_prefix = any(p in q for p in CAPABILITY_PREFIXES)
     has_verb = any(v in q for v in CAPABILITY_VERBS)
     has_suffix = any(s in q for s in CAPABILITY_SUFFIXES)
     if has_prefix and has_verb and has_suffix:
         return True
-    
+
     return False
+
+
+def _is_handoff_question(question: str) -> bool:
+    """兜底规则：是否转人工/联系工程师类（仅作兜底，意图不可用时用）"""
+    if not question or not isinstance(question, str):
+        return False
+    q = question.strip()
+    keywords = (
+        "转人工", "人工客服", "人工服务", "真人", "联系工程师", "找客服",
+        "转接", "售后电话", "客服电话", "投诉",
+    )
+    return any(k in q for k in keywords)
+
+
+def _chat_response_handoff(question: str) -> ChatResponse:
+    """返回转人工引导（reply_mode=handoff），不查库、不展示故障卡片"""
+    return ChatResponse(
+        issue_category="其他",
+        confidence=0.9,
+        top_causes=[],
+        steps=[],
+        solution={"temporary": "", "final": ""},
+        safety_tip="",
+        cited_docs=[],
+        should_escalate=False,
+        short_answer_text=HANDOFF_HINT,
+        related_articles=None,
+        reply_mode="handoff",
+    )
 
 
 def parse_causes(cause_text: Optional[str]) -> List[str]:
@@ -412,24 +458,86 @@ class ChatService:
     async def search_and_answer(self, request: ChatRequest) -> ChatResponse:
         """
         搜索知识库并生成回答
-        - 「你是谁」等身份/闲聊类问题：若已配置 DeepSeek，直接走 AI，不查知识库
-        - 其余：优先使用向量检索（QueryService）；若向量检索失败或无结果，fallback 到 .NET 后端
-        - 若都不可用或结果为空，且已配置 DeepSeek，则用 AI 生成兜底回答
+        - 先意图识别：chat/capability → 直接 AI conversation（不查库）；solution → 查库
+        - 意图不可用时用规则兜底 _is_chitchat_question
+        - 查库：向量检索 → .NET 兜底 → AI 兜底
         """
         tenant_id = request.tenant_id or settings.DEFAULT_TENANT
         self.dotnet_client.tenant_id = tenant_id
         logger.info("收到搜索请求 - 问题: %s, TenantId: %s", request.question, tenant_id)
 
-        # 身份/闲聊类问题（如「你是谁」）直接走 AI，仅以对话形式展示，不展示故障排查结构
-        if _is_chitchat_question(request.question) and self.deepseek_client.is_available:
-            logger.info("识别为身份/闲聊问题，直接调用 AI 回答（conversation 模式）")
-            ai_text = await self.deepseek_client.chat(
-                user_content=request.question,
-                system_prompt=AI_CHITCHAT_SYSTEM,
+        # 1) 先意图识别（优先）
+        intent_result = None
+        try:
+            intent_result = await classify_intent(request.question)
+        except Exception as e:
+            logger.warning("意图识别异常，走规则兜底: %s", e)
+
+        # 2) 意图识别成功且为转人工 → 直接返回 handoff，不查知识库
+        if intent_result and intent_result.intent == Intent.HANDOFF:
+            logger.info(
+                "[Intent] intent=handoff conf=%.2f reason=%s route=INTENT_HANDOFF",
+                intent_result.confidence,
+                (intent_result.reason or "")[:40],
             )
-            return _chat_response_from_ai_fallback(request.question, ai_text, reply_mode="conversation")
+            return _chat_response_handoff(request.question)
+
+        # 3) 意图识别成功且为闲聊/能力咨询 → 直接对话，不查知识库
+        if intent_result and intent_result.intent in (Intent.CHAT, Intent.CAPABILITY):
+            route = "INTENT_CHAT" if intent_result.intent == Intent.CHAT else "INTENT_CAPABILITY"
+            logger.info(
+                "[Intent] intent=%s conf=%.2f reason=%s route=%s",
+                intent_result.intent.value,
+                intent_result.confidence,
+                (intent_result.reason or "")[:40],
+                route,
+            )
+            if self.deepseek_client.is_available:
+                ai_text = await self.deepseek_client.chat(
+                    user_content=request.question,
+                    system_prompt=AI_CHITCHAT_SYSTEM,
+                )
+                return _chat_response_from_ai_fallback(
+                    request.question, ai_text, reply_mode="conversation"
+                )
+            return _chat_response_from_ai_fallback(
+                request.question,
+                "我可以帮你解答设备故障、使用方法等问题。你可以描述一下具体情况～",
+                reply_mode="conversation",
+            )
+
+        # 4) 意图识别失败/不可用：先用转人工规则兜底
+        if _is_handoff_question(request.question):
+            logger.info("[Intent] intent=handoff route=FALLBACK_HANDOFF（规则兜底）")
+            return _chat_response_handoff(request.question)
+
+        # 5) 再用闲聊规则兜底
         if _is_chitchat_question(request.question):
-            logger.warning("识别为身份/闲聊问题，但 DeepSeek 未配置，返回通用提示")
+            logger.info("[Intent] intent=RULE_CHITCHAT route=RULE_CHITCHAT（规则兜底）")
+            if self.deepseek_client.is_available:
+                ai_text = await self.deepseek_client.chat(
+                    user_content=request.question,
+                    system_prompt=AI_CHITCHAT_SYSTEM,
+                )
+                return _chat_response_from_ai_fallback(
+                    request.question, ai_text, reply_mode="conversation"
+                )
+            return _chat_response_from_ai_fallback(
+                request.question,
+                "我可以帮你解答设备故障、使用方法等问题。你可以描述一下具体情况～",
+                reply_mode="conversation",
+            )
+
+        # 6) 走查库链路（solution 或兜底未命中）
+        if intent_result:
+            logger.info(
+                "[Intent] intent=%s conf=%.2f reason=%s route=RAG",
+                intent_result.intent.value,
+                intent_result.confidence,
+                (intent_result.reason or "")[:40],
+            )
+        else:
+            logger.info("[Intent] intent=(fallback) route=RAG")
 
         # 优先使用向量检索
         if self._query_service and self._kb_repo:

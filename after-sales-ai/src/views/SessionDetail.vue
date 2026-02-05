@@ -30,6 +30,13 @@
           :solution="getSolution(message.messageId)"
           :readonly="true"
         />
+        <div
+          v-if="message.role === 'assistant' && getAIMeta(message.messageId)?.replyMode === 'handoff'"
+          class="handoff-card"
+        >
+          <div class="handoff-title">转人工客服</div>
+          <a class="handoff-phone" href="tel:0312-7027666">📞 人工客服电话：0312-7027666</a>
+        </div>
       </div>
     </div>
   </div>
@@ -71,7 +78,7 @@ function getAIMeta(messageId: string): AIResponseMeta | null {
 
 function shouldShowAnswerCard(messageId: string): boolean {
   const meta = getAIMeta(messageId)
-  return meta != null && meta.replyMode !== 'conversation'
+  return meta != null && meta.replyMode !== 'conversation' && meta.replyMode !== 'handoff'
 }
 
 function getSolution(messageId: string): { temporary: string; final: string } {
@@ -161,5 +168,28 @@ function goBack() {
 
 .message-wrapper {
   margin-bottom: 16px;
+}
+
+.handoff-card {
+  margin-top: 8px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 12px;
+  border-left: 4px solid #0ea5e9;
+}
+
+.handoff-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-bottom: 8px;
+}
+
+.handoff-phone {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #0369a1;
+  text-decoration: none;
 }
 </style>

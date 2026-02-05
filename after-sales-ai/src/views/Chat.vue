@@ -34,6 +34,15 @@
           @feedback="handleFeedback(message.messageId, $event)"
           @select-related-question="handleSelectRelatedQuestion"
         />
+        <!-- 转人工：仅展示引导话术 + 客服电话卡片，不展示故障排查 -->
+        <div
+          v-if="message.role === 'assistant' && getAIMeta(message.messageId)?.replyMode === 'handoff'"
+          class="handoff-card"
+        >
+          <div class="handoff-title">转人工客服</div>
+          <p class="handoff-desc">请提供设备型号、故障现象、发生时间及联系方式，我们将转交工程师跟进。</p>
+          <a class="handoff-phone" href="tel:0312-7027666">📞 人工客服电话：0312-7027666</a>
+        </div>
       </div>
       <!-- 加载状态 -->
       <div v-if="isLoading" class="loading-indicator">
@@ -124,10 +133,10 @@ function getAIMeta(messageId: string): AIResponseMeta | null {
   return aiMetas.value.find((m) => m.relatedMessageId === messageId) || null
 }
 
-// 是否展示故障排查卡片：有 AI 元数据且非「仅对话」模式时展示
+// 是否展示故障排查卡片：有 AI 元数据且为 troubleshooting 时展示；conversation/handoff 不展示
 function shouldShowAnswerCard(messageId: string): boolean {
   const meta = getAIMeta(messageId)
-  return meta != null && meta.replyMode !== 'conversation'
+  return meta != null && meta.replyMode !== 'conversation' && meta.replyMode !== 'handoff'
 }
 
 // 获取解决方案（从 AI 响应中提取）
@@ -557,6 +566,45 @@ watch(messages, () => {
 
 .message-wrapper {
   margin-bottom: 16px;
+}
+
+.handoff-card {
+  margin-top: 8px;
+  padding: 14px 16px;
+  background: linear-gradient(135deg, #f0f9ff 0%, #e0f2fe 100%);
+  border-radius: 12px;
+  border-left: 4px solid #0ea5e9;
+}
+
+.handoff-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #0c4a6e;
+  margin-bottom: 8px;
+}
+
+.handoff-desc {
+  font-size: 14px;
+  color: #475569;
+  margin: 0 0 10px;
+  line-height: 1.5;
+}
+
+.handoff-phone {
+  display: inline-block;
+  font-size: 15px;
+  font-weight: 600;
+  color: #0369a1;
+  text-decoration: none;
+  padding: 6px 12px;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #0ea5e9;
+  transition: background 0.2s;
+}
+
+.handoff-phone:hover {
+  background: #e0f2fe;
 }
 
 .chat-input-area {

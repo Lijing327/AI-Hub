@@ -155,8 +155,8 @@ export interface ChatResponse {
   }>
   /** 技术资料（命中知识条目的附件：图片、视频、文档等） */
   technical_resources?: TechnicalResourceDto[]
-  /** 展示模式：conversation=仅对话气泡，不展示故障排查结构；未设置或 troubleshooting=完整结构 */
-  reply_mode?: 'conversation' | 'troubleshooting'
+  /** 展示模式：conversation=仅对话气泡；handoff=转人工；未设置或 troubleshooting=完整结构 */
+  reply_mode?: 'conversation' | 'troubleshooting' | 'handoff'
   /** 会话 ID（首次请求时自动创建，后续请求应带上） */
   conversation_id?: string
   /** 本条 assistant 消息 ID */
