@@ -10,6 +10,21 @@
     </div>
 
     <div class="card-body">
+      <!-- 其他可能匹配的问题（置顶、不折叠、仅显示标题） -->
+      <div class="section" v-if="relatedArticles && relatedArticles.length > 0">
+        <div class="section-title">请选择要咨询的问题 ({{ relatedArticles.length }}条)</div>
+        <div class="related-articles">
+          <div
+            v-for="article in relatedArticles"
+            :key="article.id"
+            class="related-article title-only"
+            @click="handleSelectRelatedQuestion(article)"
+          >
+            <div class="article-title">{{ article.title || article.questionText }}</div>
+          </div>
+        </div>
+      </div>
+
       <!-- 可能原因 -->
       <div class="section">
         <div class="section-title">可能原因</div>
@@ -89,28 +104,6 @@
         </div>
       </div>
 
-      <!-- 其他可能匹配的问题（可展开收起） -->
-      <div class="section collapsible-section" v-if="relatedArticles && relatedArticles.length > 0">
-        <div class="section-title clickable" @click="toggleRelatedExpand">
-          <span>其他可能匹配的问题</span>
-          <span class="expand-hint">({{ relatedArticles.length }}条)</span>
-          <span class="expand-icon" :class="{ expanded: isRelatedExpanded }">▼</span>
-        </div>
-        <transition name="collapse">
-          <div class="related-articles" v-show="isRelatedExpanded">
-            <div 
-              v-for="article in relatedArticles" 
-              :key="article.id" 
-              class="related-article"
-              @click="handleSelectRelatedQuestion(article)"
-            >
-              <div class="article-title">{{ article.title }}</div>
-              <div class="article-excerpt" v-if="article.excerpt">{{ article.excerpt }}</div>
-              <div class="article-question" v-else-if="article.questionText">{{ article.questionText }}</div>
-            </div>
-          </div>
-        </transition>
-      </div>
     </div>
 
     <div class="card-footer" v-if="!readonly">
@@ -124,15 +117,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, defineProps, defineEmits, withDefaults } from 'vue'
+import { defineProps, defineEmits, withDefaults } from 'vue'
 import type { AIResponseMeta, RelatedArticle, TechnicalResource } from '@/models/types'
-
-// 展开/收起状态（默认收起）
-const isRelatedExpanded = ref(false)
-
-function toggleRelatedExpand() {
-  isRelatedExpanded.value = !isRelatedExpanded.value
-}
 
 interface Props {
   meta: AIResponseMeta
@@ -496,55 +482,6 @@ function formatDuration(seconds: number): string {
   color: #52c41a;
 }
 
-/* 可展开收起区域 */
-.collapsible-section .section-title.clickable {
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  user-select: none;
-}
-
-.collapsible-section .section-title.clickable:hover {
-  color: #1890ff;
-}
-
-.expand-hint {
-  font-size: 12px;
-  color: #999;
-  font-weight: normal;
-}
-
-.expand-icon {
-  font-size: 12px;
-  color: #999;
-  transition: transform 0.3s ease;
-  margin-left: auto;
-}
-
-.expand-icon.expanded {
-  transform: rotate(180deg);
-}
-
-/* 展开收起动画 */
-.collapse-enter-active,
-.collapse-leave-active {
-  transition: all 0.3s ease;
-  overflow: hidden;
-}
-
-.collapse-enter-from,
-.collapse-leave-to {
-  opacity: 0;
-  max-height: 0;
-}
-
-.collapse-enter-to,
-.collapse-leave-from {
-  opacity: 1;
-  max-height: 1000px;
-}
-
 .related-articles {
   display: flex;
   flex-direction: column;
@@ -559,6 +496,14 @@ function formatDuration(seconds: number): string {
   border-left: 3px solid #1890ff;
   cursor: pointer;
   transition: all 0.3s;
+}
+
+.related-article.title-only {
+  padding: 10px 12px;
+}
+
+.related-article.title-only .article-title {
+  margin-bottom: 0;
 }
 
 .related-article:hover {

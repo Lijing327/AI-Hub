@@ -21,7 +21,8 @@
         </div>
       </div>
       <div v-for="message in messages" :key="message.messageId" class="message-wrapper">
-        <ChatMessageBubble :message="message" />
+        <!-- 有故障排查卡片时不展示短答气泡（顶部短答+时间）；无卡片时照常展示对话气泡 -->
+        <ChatMessageBubble v-if="!(message.role === 'assistant' && shouldShowAnswerCard(message.messageId))" :message="message" />
         <!-- 仅在有结构化回复时展示故障排查卡片；conversation 模式（如「你是谁」）只展示对话气泡 -->
         <AiAnswerCard
           v-if="message.role === 'assistant' && shouldShowAnswerCard(message.messageId)"
