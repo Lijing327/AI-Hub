@@ -72,7 +72,7 @@ def _build_file_info(base_path: Path, file_path: Path, base_url: str) -> dict:
 
 
 def _is_local_url(u: str) -> bool:
-    """判断 URL 是否为本地地址（localhost / 127.0.0.1）"""
+    """判断 URL 是否为本地地址（不应作为生产附件外链）"""
     if not u:
         return False
     return "localhost" in u or "127.0.0.1" in u
@@ -84,7 +84,7 @@ def rewrite_attachment_url_to_remote(url: str) -> str:
     避免前端点击附件跳转到 localhost。
     优先使用 ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH；
     否则用 ATTACHMENT_BASE_URL（如 https://域名:4023/uploads）拼出可访问链接。
-    若配置的 BASE_URL 仍是本地地址，则优先用 FILES_API_BASE_URL 拼链接，避免误用默认值。
+    若当前配置仍是本地地址，则优先用 ATTACHMENT_FILES_API_BASE_URL 再拼一次，避免漏配。
     """
     if not url or not isinstance(url, str):
         return url or ""
@@ -107,7 +107,7 @@ def rewrite_attachment_url_to_remote(url: str) -> str:
     remote_path = (settings.ATTACHMENT_REMOTE_PATH or "").replace("\\", "/").strip().strip("/")
     encoded_name = quote(filename, safe="")
 
-    # 优先：ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH（且非本地，避免用错）
+    # 优先：ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH（且 base 非本地）
     base = (settings.ATTACHMENT_FILES_API_BASE_URL or "").strip()
     if base and not _is_local_url(base):
         if remote_path:
@@ -115,7 +115,7 @@ def rewrite_attachment_url_to_remote(url: str) -> str:
             return f"{base.rstrip('/')}/uploads/{encoded_path}/{encoded_name}"
         return f"{base.rstrip('/')}/uploads/{encoded_name}"
 
-    # 兜底：ATTACHMENT_BASE_URL（仅当其为非本地地址时使用，否则仍会跳到 localhost）
+    # 兜底：ATTACHMENT_BASE_URL（且非本地）拼出可访问地址
     attachment_base = (settings.ATTACHMENT_BASE_URL or "").strip()
     if attachment_base and not _is_local_url(attachment_base):
         if remote_path:
@@ -123,8 +123,8 @@ def rewrite_attachment_url_to_remote(url: str) -> str:
             return f"{attachment_base.rstrip('/')}/{encoded_path}/{encoded_name}"
         return f"{attachment_base.rstrip('/')}/{encoded_name}"
 
-    # 若两者未配置或均为本地：再用 FILES_API_BASE_URL 拼一次（可能通过环境变量注入）
-    if base:
+    # 配置里仍是本地或未配：若通过环境变量单独设置了 FILES_API_BASE_URL（非本地），仍用其拼写
+    if base and not _is_local_url(base):
         if remote_path:
             encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
             return f"{base.rstrip('/')}/uploads/{encoded_path}/{encoded_name}"

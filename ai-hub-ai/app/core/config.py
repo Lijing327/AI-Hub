@@ -1,17 +1,17 @@
 """
 应用配置
 使用 pydantic-settings 从 .env 加载；
-同时加载 .env.production（若存在），其项会覆盖 .env，便于服务器直接部署时无需改文件名或设 APP_ENV。
+当 APP_ENV=production 时自动加载 .env.production（部署时设置环境变量即可）。
 """
+import os
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# 生产环境加载 .env.production，否则加载 .env（部署时设置 APP_ENV=production）
+_env_file = ".env.production" if os.getenv("APP_ENV") == "production" else ".env"
 
 
 class Settings(BaseSettings):
-    # 先 .env 再 .env.production，后者覆盖前者；缺失的文件会被忽略
-    model_config = SettingsConfigDict(
-        env_file=(".env", ".env.production"),
-        env_file_encoding="utf-8",
-    )
+    model_config = SettingsConfigDict(env_file=_env_file, env_file_encoding="utf-8")
 
     # 基础
     APP_NAME: str = "ai-hub-vector-service"
