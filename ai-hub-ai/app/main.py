@@ -84,10 +84,12 @@ def create_app() -> FastAPI:
                 "对话 LLM: 未配置（百炼: LLM_BASE_URL+LLM_MODEL+DASHSCOPE_API_KEY；或 DEEPSEEK_API_KEY）"
             )
         logger.info(
-            "配置: DOTNET_BASE_URL=%s, DEFAULT_TENANT=%s, ATTACHMENT_BASE_PATH=%s",
+            "配置: DOTNET_BASE_URL=%s, DEFAULT_TENANT=%s, ATTACHMENT_BASE_PATH=%s, ATTACHMENT_BASE_URL=%s, ATTACHMENT_FILES_API_BASE_URL=%s",
             settings.DOTNET_BASE_URL,
             settings.DEFAULT_TENANT,
             settings.ATTACHMENT_BASE_PATH or "(未配置)",
+            settings.ATTACHMENT_BASE_URL or "(未配置)",
+            settings.ATTACHMENT_FILES_API_BASE_URL or "(未配置)",
         )
 
     return app

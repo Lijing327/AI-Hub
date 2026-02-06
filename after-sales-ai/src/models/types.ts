@@ -160,8 +160,8 @@ export interface AIResponse {
   shortAnswerText: string
   relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
   technicalResources?: TechnicalResource[] // 技术资料（附件）
-  /** 展示模式：conversation=仅对话气泡，不展示故障排查结构 */
-  replyMode?: 'conversation' | 'troubleshooting'
+  /** 展示模式：conversation=仅对话气泡，troubleshooting=故障排查结构，handoff=转人工 */
+  replyMode?: 'conversation' | 'troubleshooting' | 'handoff'
 }
 
 // 相关文章（用于显示其他可能匹配的问题）

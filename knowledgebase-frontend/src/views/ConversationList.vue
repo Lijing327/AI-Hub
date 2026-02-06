@@ -179,9 +179,14 @@ function viewDetail(conversationId: string) {
   router.push(`/audit/conversation/${conversationId}`)
 }
 
-// 格式化
+// 格式化：接口返回的时间为 UTC（带 Z 或视为 UTC），转为本地时间显示
 function formatDateTime(dateStr: string): string {
-  const date = new Date(dateStr)
+  if (!dateStr) return ''
+  const s = dateStr.trim()
+  const asUtc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) && !/Z|[+-]\d{2}:?\d{2}$/.test(s)
+    ? s.replace(/\.\d{3}$/, '') + 'Z'
+    : s
+  const date = new Date(asUtc)
   return date.toLocaleString('zh-CN', {
     year: 'numeric',
     month: '2-digit',

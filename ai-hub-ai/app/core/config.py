@@ -1,17 +1,24 @@
 """
 应用配置
-使用 pydantic-settings 从 .env 加载；
-当 APP_ENV=production 时自动加载 .env.production（部署时设置环境变量即可）。
+一键切换：改下面 USE_PRODUCTION 即可换用 .env 或 .env.production。
 """
-import os
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# 生产环境加载 .env.production，否则加载 .env（部署时设置 APP_ENV=production）
-_env_file = ".env.production" if os.getenv("APP_ENV") == "production" else ".env"
+# 一键切换：True = 用 .env.production，False = 用 .env
+USE_PRODUCTION = False
+
+# 项目根目录：app/core/config.py -> app -> 项目根
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
+_ENV_FILE = str(_PROJECT_ROOT / (".env.production" if USE_PRODUCTION else ".env"))
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=_env_file, env_file_encoding="utf-8")
+    model_config = SettingsConfigDict(
+        env_file=_ENV_FILE,
+        env_file_encoding="utf-8",
+    )
 
     # 基础
     APP_NAME: str = "ai-hub-vector-service"

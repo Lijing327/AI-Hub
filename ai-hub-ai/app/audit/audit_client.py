@@ -83,7 +83,13 @@ class AuditClient:
             logger.error("创建会话失败 (HTTP %d): %s", e.response.status_code, e.response.text)
             return None
         except Exception as e:
-            logger.error("创建会话失败: %s", e)
+            err_msg = str(e)
+            logger.error("创建会话失败: %s", err_msg)
+            if "connection" in err_msg.lower() or "refused" in err_msg.lower() or "failed" in err_msg.lower():
+                logger.error(
+                    "审计无法连接 .NET：当前 DOTNET_BASE_URL=%s。若 .NET 与 Python 同机，请确保 .NET 已启动并监听 5000；若 .NET 在另一台机器，请将 DOTNET_BASE_URL 改为该机地址（如 http://该机IP:5000）",
+                    self._base_url,
+                )
             return None
 
     async def append_message(

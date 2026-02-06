@@ -20,6 +20,15 @@ public class AiAuditService : IAiAuditService
     }
 
     /// <summary>
+    /// 将数据库读出的时间视为 UTC，确保 API 返回带 Z 的 ISO 时间，前端可按本地时区正确显示
+    /// </summary>
+    private static DateTime AsUtc(DateTime value)
+    {
+        if (value.Kind == DateTimeKind.Utc) return value;
+        return DateTime.SpecifyKind(value, DateTimeKind.Utc);
+    }
+
+    /// <summary>
     /// 将日期调整为当天结束时间（23:59:59.999）
     /// 用于日期范围查询时包含整天的数据
     /// </summary>
@@ -224,8 +233,8 @@ public class AiAuditService : IAiAuditService
                 TenantId = c.TenantId,
                 UserId = c.UserId,
                 Channel = c.Channel,
-                StartedAt = c.StartedAt,
-                EndedAt = c.EndedAt,
+                StartedAt = AsUtc(c.StartedAt),
+                EndedAt = c.EndedAt.HasValue ? AsUtc(c.EndedAt.Value) : null,
                 MessageCount = c.Messages.Count,
                 // 主意图取第一条决策
                 MainIntent = _db.AiDecisionLogs
@@ -286,15 +295,15 @@ public class AiAuditService : IAiAuditService
             TenantId = conversation.TenantId,
             UserId = conversation.UserId,
             Channel = conversation.Channel,
-            StartedAt = conversation.StartedAt,
-            EndedAt = conversation.EndedAt,
+            StartedAt = AsUtc(conversation.StartedAt),
+            EndedAt = conversation.EndedAt.HasValue ? AsUtc(conversation.EndedAt.Value) : null,
             MetaJson = conversation.MetaJson,
             Messages = messages.Select(m => new MessageDetail
             {
                 MessageId = m.MessageId,
                 Role = m.Role,
                 Content = m.IsMasked && !string.IsNullOrEmpty(m.MaskedContent) ? m.MaskedContent : m.Content,
-                CreatedAt = m.CreatedAt,
+                CreatedAt = AsUtc(m.CreatedAt),
                 Decision = decisions.TryGetValue(m.MessageId, out var d) ? new DecisionDetail
                 {
                     IntentType = d.IntentType,
@@ -514,7 +523,7 @@ public class AiAuditService : IAiAuditService
             {
                 MessageId = n.MessageId,
                 Question = n.Content,
-                CreatedAt = n.CreatedAt,
+                CreatedAt = AsUtc(n.CreatedAt),
                 FallbackReason = n.FallbackReason
             }).ToList();
         }

@@ -226,15 +226,22 @@ function goBack() {
   router.push('/audit')
 }
 
-// 格式化
+// 格式化：接口返回 UTC，转为本地时间显示
+function parseUtc(dateStr: string): Date {
+  if (!dateStr) return new Date(NaN)
+  const s = dateStr.trim()
+  const asUtc = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/.test(s) && !/Z|[+-]\d{2}:?\d{2}$/.test(s)
+    ? s.replace(/\.\d{3}$/, '') + 'Z'
+    : s
+  return new Date(asUtc)
+}
+
 function formatDateTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  return date.toLocaleString('zh-CN')
+  return parseUtc(dateStr).toLocaleString('zh-CN')
 }
 
 function formatTime(dateStr: string): string {
-  const date = new Date(dateStr)
-  return date.toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
+  return parseUtc(dateStr).toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit', second: '2-digit' })
 }
 
 function formatIntent(intent: string): string {
