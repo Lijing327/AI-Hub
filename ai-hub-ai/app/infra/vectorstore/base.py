@@ -20,3 +20,7 @@ class IVectorStore(ABC):
         ]
         """
         raise NotImplementedError
+
+    def clear_collection(self) -> None:
+        """清空当前集合（全量重建前使用）。未实现的 store 会抛 NotImplementedError。"""
+        raise NotImplementedError("clear_collection not supported")

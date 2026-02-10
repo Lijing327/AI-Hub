@@ -6,18 +6,23 @@
 """
 import re
 from typing import List, Optional, Dict, Any
+from urllib.parse import quote
 
 import httpx
 from fastapi import HTTPException
 
-from app.core.config import settings
+from app.core.config import settings, USE_PRODUCTION
 from app.core.logging_config import get_logger
 from app.clients.dotnet_client import DotnetClient
 from app.clients.deepseek_client import DeepSeekClient
-from app.schemas.chat import ChatRequest, ChatResponse, ResourceItem
+from app.schemas.chat import ChatRequest, ChatResponse, ResourceItem, ArticleDetailResponse
 from app.services.query_service import QueryService
-from app.repositories.kb_article_repo import KbArticleRepository, get_assets_by_article_id
-from app.services.attachment_service import rewrite_attachment_url_to_remote
+from app.repositories.kb_article_repo import KbArticleRepository, get_assets_by_article_id  # 附件按 article_id 从 kb_asset 查
+from app.services.attachment_service import (
+    rewrite_attachment_url_to_remote,
+    extract_filename_from_reference,
+    AttachmentService,
+)
 from app.services.intent_service import classify_intent, Intent
 
 logger = get_logger(__name__)
@@ -156,8 +161,19 @@ def _chat_response_handoff(question: str) -> ChatResponse:
     )
 
 
+def _strip_reference_mentions(text: str) -> str:
+    """去掉文案中的「参考"xxx"」片段，避免在可能原因/排查步骤/解决方案中重复展示"""
+    if not text or not text.strip():
+        return text
+    return re.sub(
+        r'参考["""""][^"""""]*["""""]|参考[：:]\s*[^，。\s]+',
+        "",
+        text,
+    ).replace("参考参考", "参考").strip("，, ")
+
+
 def parse_causes(cause_text: Optional[str]) -> List[str]:
-    """从原因文本解析可能原因列表"""
+    """从原因文本解析可能原因列表；跳过纯参考行，并对每条去掉「参考"xxx"」片段"""
     if not cause_text or not cause_text.strip():
         return []
     lines = [ln.strip() for ln in re.split(r"[\n\r；;。]", cause_text) if ln.strip()]
@@ -165,6 +181,9 @@ def parse_causes(cause_text: Optional[str]) -> List[str]:
     for ln in lines:
         cleaned = re.sub(r"^\d+[\.、]?\s*", "", ln)
         cleaned = re.sub(r"^[•·]\s*", "", cleaned).strip()
+        if extract_filename_from_reference(ln) is not None and len(cleaned) < 30:
+            continue  # 纯参考行不当作原因
+        cleaned = _strip_reference_mentions(cleaned)
         if len(cleaned) > 3:
             causes.append(cleaned)
     return causes[:5]
@@ -174,7 +193,7 @@ def parse_steps(
     solution_text: Optional[str],
     cause_text: Optional[str] = None,
 ) -> List[Dict[str, str]]:
-    """解析排查步骤"""
+    """解析排查步骤；纯「参考xxx」行不当作步骤，仅在参考资料区展示"""
     text = solution_text or cause_text or ""
     if not text:
         return []
@@ -184,6 +203,9 @@ def parse_steps(
         cleaned = re.sub(r"^\d+[\.、]?\s*", "", ln)
         cleaned = re.sub(r"^[•·]\s*", "", cleaned).strip()
         if len(cleaned) <= 5:
+            continue
+        # 纯参考资料引用（如 参考"xxx"）一律不当作步骤，由参考资料区展示
+        if extract_filename_from_reference(ln) is not None:
             continue
         if re.search(r"检查|测试|校准|清理|调整|更换|维修|查看|观察", cleaned):
             steps.append({
@@ -199,10 +221,11 @@ def parse_steps(
                 "expect": "完成操作",
                 "next": "进行下一步" if i < len(lines) else "如问题未解决，请联系技术支持",
             })
+    # 若过滤后无步骤，不把整段原文（含参考）塞进一条步骤；仅保留一条通用提示
     if not steps and text:
         steps.append({
-            "title": "查看解决方案",
-            "action": text[:200],
+            "title": "结合可能原因与参考资料排查",
+            "action": "请根据上方可能原因逐项检查，并查看下方参考资料中的操作说明。",
             "expect": "问题得到解决",
             "next": "如问题未解决，请联系技术支持",
         })
@@ -213,15 +236,17 @@ def parse_solution(
     solution_text: Optional[str],
     cause_text: Optional[str] = None,
 ) -> Dict[str, str]:
-    """解析临时/根本解决文案"""
+    """解析临时/根本解决文案；去掉其中的「参考"xxx"」片段，避免在解决方案中重复展示"""
     text = solution_text or cause_text or ""
     if not text:
         return {"temporary": "暂无临时解决方案", "final": "请查看详细排查步骤或联系技术支持"}
     temp_m = re.search(r"临时[：:]\s*([^。]+)", text)
     final_m = re.search(r"(?:最终|根因|永久)[：:]\s*([^。]+)", text)
+    temporary = temp_m.group(1).strip() if temp_m else text[:100]
+    final = final_m.group(1).strip() if final_m else text
     return {
-        "temporary": temp_m.group(1).strip() if temp_m else text[:100],
-        "final": final_m.group(1).strip() if final_m else text,
+        "temporary": _strip_reference_mentions(temporary),
+        "final": _strip_reference_mentions(final),
     }
 
 
@@ -251,6 +276,143 @@ def determine_issue_category(
         if tag_list:
             return tag_list[0]
     return "其他"
+
+
+def _extract_reference_names(solution_text: Optional[str], cause_text: Optional[str]) -> List[str]:
+    """从解决方案/原因文本中提取所有「参考xxx」引用名，去重后返回"""
+    text = (solution_text or "") + "\n" + (cause_text or "")
+    if not text.strip():
+        return []
+    seen = set()
+    result: List[str] = []
+    for line in re.split(r"[\n\r；;。]", text):
+        for part in re.split(r"[,，]", line.strip()):
+            part = part.strip()
+            if not part:
+                continue
+            name = extract_filename_from_reference(part)
+            if name:
+                name = name.strip().strip('"\'""\'').strip()
+                if name and name not in seen:
+                    seen.add(name)
+                    result.append(name)
+    return result
+
+
+def _build_attachment_url(file_name: str) -> str:
+    """
+    开发环境：按根目录仅文件名拼 URL。
+    附件根目录为 D:\\01-资料\\永红造型线维修视频，用 ATTACHMENT_BASE_URL + file_name。
+    """
+    if not file_name or not file_name.strip():
+        return ""
+    base = (settings.ATTACHMENT_BASE_URL or "").strip().rstrip("/")
+    if not base:
+        return ""
+    encoded = quote(file_name.strip(), safe="")
+    return f"{base}/{encoded}"
+
+
+def _build_attachment_url_production(file_name: str) -> str:
+    """
+    正式环境：用 ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH + file_name 拼绝对地址。
+    示例：https://www.yonghongjituan.com:4023/uploads/diyi/永红造型线维修视频/2.mp4（路径会 URL 编码）
+    """
+    if not file_name or not file_name.strip():
+        return ""
+    base = (settings.ATTACHMENT_FILES_API_BASE_URL or "").strip().rstrip("/")
+    remote = (settings.ATTACHMENT_REMOTE_PATH or "").replace("\\", "/").strip().strip("/")
+    if not base:
+        return ""
+    # 路径 = REMOTE_PATH + file_name，逐段编码
+    parts = [p.strip() for p in remote.split("/") if p.strip()]
+    parts.append(file_name.strip())
+    encoded_path = "/".join(quote(p, safe="") for p in parts)
+    return f"{base}/uploads/{encoded_path}"
+
+
+def _assets_to_resource_items(assets: List[Dict[str, Any]]) -> List[ResourceItem]:
+    """
+    将 kb_asset 查询结果转为 ResourceItem 列表，均按 file_name 拼 URL，不依赖 kb_asset.url。
+    - 正式环境：ATTACHMENT_FILES_API_BASE_URL + /uploads/ + ATTACHMENT_REMOTE_PATH + file_name
+    - 开发环境：ATTACHMENT_BASE_URL + file_name
+    """
+    out: List[ResourceItem] = []
+    for a in assets:
+        file_name = (a.get("name") or "").strip() or (a.get("file_name") or "").strip()
+        if USE_PRODUCTION:
+            url = _build_attachment_url_production(file_name) if file_name else ""
+        else:
+            url = _build_attachment_url(file_name) if file_name else ""
+        out.append(
+            ResourceItem(
+                id=int(a.get("id") or 0),
+                name=file_name or "附件",
+                type=(a.get("type") or "other").strip() or "other",
+                url=url,
+                size=a.get("size"),
+                duration=a.get("duration"),
+            )
+        )
+    return out
+
+
+def _resolve_reference_resources(
+    solution_text: Optional[str],
+    cause_text: Optional[str],
+) -> List[ResourceItem]:
+    """
+    从 solution/cause 中的「参考xxx」与文件/文件夹一一对应，精准解析并转为 ResourceItem。
+    - 命中单文件：添加 1 条（或文件夹下多条）
+    - 未命中：仍添加 1 条，name=参考名、url 为空，保证「参考资料」区能显示参考名
+    """
+    ref_names = _extract_reference_names(solution_text, cause_text)
+    if not ref_names:
+        return []
+    attachment_svc = AttachmentService()
+    items: List[ResourceItem] = []
+    seen_urls: set = set()
+    for ref_name in ref_names:
+        try:
+            # 仅精确匹配：参考名与文件名/文件夹名完全一致，避免误匹配（如 141油泵 匹配到含多文件的目录）
+            found = attachment_svc.find_attachment_files_exact(ref_name)
+        except Exception as e:
+            logger.debug("解析参考资料失败 ref=%s: %s", ref_name, e)
+            found = []
+        if not found:
+            # 未匹配到文件也占位一条，便于前端始终显示「参考资料」区
+            items.append(
+                ResourceItem(
+                    id=hash(ref_name) % (10**9),
+                    name=ref_name,
+                    type="other",
+                    url="",
+                    size=None,
+                    duration=None,
+                )
+            )
+            continue
+        # 单文件一条；文件夹则逐条添加该目录下所有文件
+        for one in found:
+            url_raw = one.get("url") or ""
+            url_rewritten = rewrite_attachment_url_to_remote(url_raw)
+            if not url_rewritten or url_rewritten in seen_urls:
+                continue
+            seen_urls.add(url_rewritten)
+            t = one.get("type") or "other"
+            if t == "directory":
+                t = "other"
+            items.append(
+                ResourceItem(
+                    id=hash(ref_name + (one.get("file_name") or "") + url_raw) % (10**9),
+                    name=one.get("file_name") or ref_name,
+                    type=t,
+                    url=url_rewritten,
+                    size=one.get("size"),
+                    duration=one.get("duration"),
+                )
+            )
+    return items
 
 
 # 无匹配时的默认响应
@@ -404,37 +566,29 @@ class ChatService:
         else:
             short_answer = f"{primary.title or ''}。请查看详细排查步骤和解决方案。"
 
-        related_list: Optional[List[Dict[str, Any]]] = None
+        # 问题列表：最有可能的放第一位（primary），其余按相关度排列，便于前端「选问题后展开回答」
+        primary_dict = {
+            "id": primary.id,
+            "title": primary.title or "",
+            "questionText": primary.question_text,
+            "excerpt": primary.question_text or primary.title or "",
+        }
+        related_list: Optional[List[Dict[str, Any]]] = [primary_dict]
         if related:
-            related_list = [
-                {
-                    "id": a.id,
-                    "title": a.title or "",
-                    "questionText": a.question_text,
-                    "excerpt": a.question_text or a.title or "",
-                }
+            related_list += [
+                {"id": a.id, "title": a.title or "", "questionText": a.question_text, "excerpt": a.question_text or a.title or ""}
                 for a in related
             ]
 
-        # 获取主命中文章的技术资料（附件）
+        # 技术资料（附件）：按 kb_asset.article_id 对应 kb_article.id 从库中查，不再从正文解析「参考xxx」
         technical_resources: Optional[List[ResourceItem]] = None
         try:
             assets = get_assets_by_article_id(primary.id)
             if assets:
-                technical_resources = [
-                    ResourceItem(
-                        id=a["id"],
-                        name=a["name"],
-                        type=a["type"],
-                        url=rewrite_attachment_url_to_remote(a["url"]),
-                        size=a.get("size"),
-                        duration=a.get("duration"),
-                    )
-                    for a in assets
-                ]
-                logger.info("获取到 %d 个技术资料（文章 ID: %d）", len(assets), primary.id)
+                technical_resources = _assets_to_resource_items(assets)
+                logger.info("按 article_id 查出 %d 条附件（文章 ID: %d）", len(assets), primary.id)
         except Exception as e:
-            logger.warning("获取技术资料失败（文章 ID: %d）: %s", primary.id, e)
+            logger.debug("获取文章附件失败 article_id=%s: %s", primary.id, e)
 
         return ChatResponse(
             issue_category=issue_category,
@@ -453,6 +607,47 @@ class ChatService:
             short_answer_text=short_answer,
             related_articles=related_list,
             technical_resources=technical_resources,
+        )
+
+    def get_article_detail(self, article_id: int) -> Optional[ArticleDetailResponse]:
+        """
+        按文章 ID 返回单条详情（可能原因、排查步骤、解决方案、参考资料）。
+        供前端点击「其他问题」时按需拉取，无需首次请求带全量数据。
+        """
+        if not self._kb_repo:
+            return None
+        article = self._kb_repo.get_by_id(article_id)
+        if not article:
+            return None
+        cause_text = article.cause_text or ""
+        solution_text = article.solution_text or ""
+        top_causes = parse_causes(cause_text)
+        if not top_causes and solution_text:
+            lines = [ln.strip() for ln in solution_text.split("\n") if ln.strip()]
+            if lines:
+                top_causes = [lines[0][:100]]
+        steps = parse_steps(solution_text, cause_text)
+        if not steps and cause_text:
+            steps = parse_steps(cause_text)
+        solution = parse_solution(solution_text, cause_text)
+        technical_resources: Optional[List[ResourceItem]] = None
+        try:
+            assets = get_assets_by_article_id(article_id)
+            if assets:
+                technical_resources = _assets_to_resource_items(assets)
+        except Exception as e:
+            logger.debug("get_article_detail 获取附件失败 article_id=%s: %s", article_id, e)
+        return ArticleDetailResponse(
+            top_causes=top_causes,
+            steps=steps,
+            solution=solution,
+            technical_resources=technical_resources,
+            issue_category=determine_issue_category(
+                article.title or "", article.question_text, article.tags
+            ),
+            alarm_code=extract_alarm_code(
+                (article.title or "") + " " + (article.question_text or ""),
+            ),
         )
 
     async def search_and_answer(self, request: ChatRequest) -> ChatResponse:
@@ -689,39 +884,31 @@ class ChatService:
         else:
             short_answer = f"{primary.get('title', '')}。请查看详细排查步骤和解决方案。"
 
-        related_list: Optional[List[Dict[str, Any]]] = None
+        # 问题列表：最有可能的放第一位（primary），其余按相关度排列
+        primary_dict = {
+            "id": primary.get("id"),
+            "title": primary.get("title", ""),
+            "questionText": primary.get("questionText"),
+            "excerpt": primary.get("questionText") or primary.get("title", ""),
+        }
+        related_list: Optional[List[Dict[str, Any]]] = [primary_dict]
         if related:
-            related_list = [
-                {
-                    "id": a.get("id"),
-                    "title": a.get("title", ""),
-                    "questionText": a.get("questionText"),
-                    "excerpt": a.get("questionText") or a.get("title", ""),
-                }
+            related_list += [
+                {"id": a.get("id"), "title": a.get("title", ""), "questionText": a.get("questionText"), "excerpt": a.get("questionText") or a.get("title", "")}
                 for a in related
             ]
 
-        # 获取主命中文章的技术资料（附件）
+        # 技术资料（附件）：按 kb_asset.article_id 从库中查
         technical_resources: Optional[List[ResourceItem]] = None
-        primary_id = primary.get("id")
-        if primary_id:
-            try:
+        try:
+            primary_id = primary.get("id")
+            if primary_id is not None:
                 assets = get_assets_by_article_id(int(primary_id))
                 if assets:
-                    technical_resources = [
-                        ResourceItem(
-                            id=a["id"],
-                            name=a["name"],
-                            type=a["type"],
-                            url=rewrite_attachment_url_to_remote(a["url"]),
-                            size=a.get("size"),
-                            duration=a.get("duration"),
-                        )
-                        for a in assets
-                    ]
-                    logger.info("获取到 %d 个技术资料（文章 ID: %s）", len(assets), primary_id)
-            except Exception as e:
-                logger.warning("获取技术资料失败（文章 ID: %s）: %s", primary_id, e)
+                    technical_resources = _assets_to_resource_items(assets)
+                    logger.info("按 article_id 查出 %d 条附件（.NET 兜底，文章 ID: %s）", len(assets), primary_id)
+        except Exception as e:
+            logger.debug("获取文章附件失败 primary.id=%s: %s", primary.get("id"), e)
 
         return ChatResponse(
             issue_category=issue_category,

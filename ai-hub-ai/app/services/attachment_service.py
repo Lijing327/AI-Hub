@@ -82,9 +82,9 @@ def rewrite_attachment_url_to_remote(url: str) -> str:
     """
     将数据库/接口里存的本地或相对附件 URL 重写为生产可访问地址，
     避免前端点击附件跳转到 localhost。
-    优先使用 ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH；
-    否则用 ATTACHMENT_BASE_URL（如 https://域名:4023/uploads）拼出可访问链接。
-    若当前配置仍是本地地址，则优先用 ATTACHMENT_FILES_API_BASE_URL 再拼一次，避免漏配。
+    保留 URL 中 /uploads/ 之后的完整相对路径（含子目录，如 永红造型线维修视频/141泵高低压阀拆解/xxx.mp4），
+    不再只取文件名导致 404。
+    优先使用 ATTACHMENT_FILES_API_BASE_URL；否则用 ATTACHMENT_BASE_URL。
     """
     if not url or not isinstance(url, str):
         return url or ""
@@ -100,35 +100,42 @@ def rewrite_attachment_url_to_remote(url: str) -> str:
         return url
 
     parts = url.rstrip("/").replace("\\", "/").split("/")
-    filename = unquote(parts[-1]) if parts else ""
-    if not filename:
+    # 找到 uploads 后的完整相对路径（含子目录），避免只取文件名丢层级
+    try:
+        idx = next(i for i, p in enumerate(parts) if p == "uploads")
+    except StopIteration:
+        idx = -1
+    if idx >= 0 and idx < len(parts) - 1:
+        # 保留 uploads 之后整段：diyi/永红造型线维修视频/141泵高低压阀拆解/主泵高低压阀清洗1.mp4
+        path_after_uploads = "/".join(parts[idx + 1:])
+    else:
+        path_after_uploads = unquote(parts[-1]) if parts else ""
+    if not path_after_uploads:
         return url
 
-    remote_path = (settings.ATTACHMENT_REMOTE_PATH or "").replace("\\", "/").strip().strip("/")
-    encoded_name = quote(filename, safe="")
+    # 对路径逐段编码（保留中文等）
+    path_parts = [unquote(p) for p in path_after_uploads.split("/")]
+    encoded_path = "/".join(quote(p, safe="") for p in path_parts)
 
-    # 优先：ATTACHMENT_FILES_API_BASE_URL + ATTACHMENT_REMOTE_PATH（且 base 非本地）
+    # 若配置了 REMOTE_PATH 且当前路径未包含该前缀，则加上（服务器根目录可能是 diyi/永红造型线维修视频）
+    remote_path = (settings.ATTACHMENT_REMOTE_PATH or "").replace("\\", "/").strip().strip("/")
+    if remote_path and not path_after_uploads.startswith(remote_path.rstrip("/")):
+        encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/")) + "/" + encoded_path
+
+    # 优先：ATTACHMENT_FILES_API_BASE_URL + 完整路径
     base = (settings.ATTACHMENT_FILES_API_BASE_URL or "").strip()
     if base and not _is_local_url(base):
-        if remote_path:
-            encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
-            return f"{base.rstrip('/')}/uploads/{encoded_path}/{encoded_name}"
-        return f"{base.rstrip('/')}/uploads/{encoded_name}"
+        return f"{base.rstrip('/')}/uploads/{encoded_path}"
 
-    # 兜底：ATTACHMENT_BASE_URL（且非本地）拼出可访问地址
+    # 兜底：ATTACHMENT_BASE_URL + 完整路径（开发环境已改为 3000 走前端代理，生产为远程地址）
     attachment_base = (settings.ATTACHMENT_BASE_URL or "").strip()
-    if attachment_base and not _is_local_url(attachment_base):
-        if remote_path:
-            encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
-            return f"{attachment_base.rstrip('/')}/{encoded_path}/{encoded_name}"
-        return f"{attachment_base.rstrip('/')}/{encoded_name}"
+    if attachment_base:
+        if attachment_base.rstrip("/").endswith("uploads"):
+            return f"{attachment_base.rstrip('/')}/{encoded_path}"
+        return f"{attachment_base.rstrip('/')}/uploads/{encoded_path}"
 
-    # 配置里仍是本地或未配：若通过环境变量单独设置了 FILES_API_BASE_URL（非本地），仍用其拼写
-    if base and not _is_local_url(base):
-        if remote_path:
-            encoded_path = "/".join(quote(p, safe="") for p in remote_path.split("/"))
-            return f"{base.rstrip('/')}/uploads/{encoded_path}/{encoded_name}"
-        return f"{base.rstrip('/')}/uploads/{encoded_name}"
+    if base:
+        return f"{base.rstrip('/')}/uploads/{encoded_path}"
 
     return url
 
@@ -280,6 +287,41 @@ class AttachmentService:
         logger.warning("未找到远程附件: %s (清理后: %s)", filename, clean_filename)
         return []
 
+    def _find_attachment_files_remote_exact(self, filename: str) -> List[dict]:
+        """远程仅精确匹配：stem 或路径段与参考名完全一致，不做模糊包含。供参考资料解析用。"""
+        clean_filename = filename.strip().strip('"""\'""\'《》【】[]()（）').strip()
+        if "." in clean_filename:
+            clean_filename = Path(clean_filename).stem
+        norm_clean = _normalize_for_match(clean_filename)
+        if not norm_clean:
+            return []
+
+        all_items = self._fetch_remote_file_list()
+        if not all_items:
+            return []
+
+        file_only = [f for f in all_items if not f.get("directory")]
+
+        # 1) 精确：文件名 stem == norm_clean
+        for f in file_only:
+            stem = Path(f.get("file_name", "")).stem
+            if _normalize_for_match(stem) == norm_clean:
+                logger.info("找到远程附件（精确）: %s -> %s", clean_filename, f.get("file_name"))
+                return [f]
+        # 2) 精确：路径某段（文件夹名）== norm_clean
+        segment_matched = []
+        for f in file_only:
+            rp = (f.get("relative_path") or f.get("path") or "").replace("\\", "/")
+            for part in rp.split("/"):
+                if _normalize_for_match(Path(part).stem) == norm_clean:
+                    segment_matched.append(f)
+                    break
+        if segment_matched:
+            logger.info("找到远程附件（路径段-精确）: %s 共 %d 个", clean_filename, len(segment_matched))
+            return segment_matched
+        logger.debug("远程精确匹配未找到: %s", filename)
+        return []
+
     def find_attachment_files(self, filename: str) -> List[dict]:
         """
         在固定目录或远程 api/files/list 中查找附件
@@ -405,4 +447,60 @@ class AttachmentService:
             return [info]
 
         logger.warning("未找到附件: %s (清理后: %s)", filename, clean_filename)
+        return []
+
+    def find_attachment_files_exact(self, filename: str) -> List[dict]:
+        """
+        仅精确匹配：参考名与文件名 stem 或文件夹名必须完全一致，不做「包含」等模糊匹配。
+        用于数据表「参考」列与附件一一对应，避免误匹配（如「141油泵」匹配到含多文件的目录）。
+        返回形态同 find_attachment_files。
+        """
+        if self.remote_base and self.remote_path:
+            return self._find_attachment_files_remote_exact(filename)
+
+        if not self.base_path:
+            return []
+        base_path = Path(self.base_path)
+        if not base_path.exists():
+            return []
+
+        clean_filename = filename.strip().strip('"""\'""\'《》【】[]()（）').strip()
+        if "." in clean_filename:
+            clean_filename = Path(clean_filename).stem
+        norm_clean = _normalize_for_match(clean_filename)
+        if not norm_clean:
+            return []
+
+        extensions_map = {
+            "video": [".mp4", ".avi", ".mov", ".wmv", ".flv", ".mkv"],
+            "image": [".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp"],
+            "pdf": [".pdf"],
+            "other": [".doc", ".docx", ".xls", ".xlsx", ".txt", ".ppt", ".pptx"],
+        }
+        all_exts = set()
+        for exts in extensions_map.values():
+            all_exts.update(e.lower() for e in exts)
+
+        # 1) 文件：stem 规范化后完全相等
+        for fp in base_path.rglob("*"):
+            if fp.is_file() and not _should_skip_file(fp) and fp.suffix.lower() in all_exts:
+                if _normalize_for_match(fp.stem) == norm_clean:
+                    logger.info("找到附件（精确）: %s -> %s", clean_filename, fp.name)
+                    info = _build_file_info(base_path, fp, self.base_url)
+                    info["type"] = _guess_asset_type_by_ext(fp.suffix)
+                    return [info]
+
+        # 2) 文件夹：文件夹名规范化后完全相等（不要求「包含」）
+        for folder in base_path.rglob("*"):
+            if not folder.is_dir():
+                continue
+            if _normalize_for_match(folder.name) != norm_clean:
+                continue
+            files = [p for p in folder.rglob("*") if p.is_file() and not _should_skip_file(p)]
+            files.sort(key=lambda p: str(p).lower())
+            results = [_build_file_info(base_path, p, self.base_url) for p in files]
+            logger.info("找到附件（精确-文件夹）: %s -> %s 共 %d 个", clean_filename, folder.name, len(results))
+            return results
+
+        logger.debug("精确匹配未找到: %s (规范化: %s)", filename, norm_clean)
         return []

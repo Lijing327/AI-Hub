@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 一键切换：True = 用 .env.production，False = 用 .env
-USE_PRODUCTION = True
+USE_PRODUCTION = False
 
 # 项目根目录：app/core/config.py -> app -> 项目根
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -77,3 +77,9 @@ class Settings(BaseSettings):
 
 
 settings = Settings()
+
+# 开发环境：附件地址走前端 dev 代理（localhost:3000），由 Vite 转发到 .NET 5000，避免直连 5000 导致地址/跨域不对
+if not USE_PRODUCTION and getattr(settings, "ATTACHMENT_BASE_URL", None):
+    base = settings.ATTACHMENT_BASE_URL
+    if base and ("localhost:5000" in base or "127.0.0.1:5000" in base):
+        settings.ATTACHMENT_BASE_URL = base.replace("localhost:5000", "localhost:3000").replace("127.0.0.1:5000", "127.0.0.1:3000")

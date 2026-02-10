@@ -44,3 +44,13 @@ class ChatResponse(BaseModel):
     # 审计相关：返回给前端用于后续消息
     conversation_id: Optional[str] = None
     message_id: Optional[str] = None
+
+
+class ArticleDetailResponse(BaseModel):
+    """单条知识文章详情（供前端点击「其他问题」时按需拉取）"""
+    top_causes: List[str]
+    steps: List[Dict[str, Any]]
+    solution: Dict[str, str]
+    technical_resources: Optional[List[ResourceItem]] = None
+    issue_category: Optional[str] = None
+    alarm_code: Optional[str] = None

@@ -30,10 +30,12 @@
           :solution="getSolution(message.messageId)"
           :related-articles="getRelatedArticles(message.messageId)"
           :technical-resources="getTechnicalResources(message.messageId)"
+          :selected-detail="getSelectedArticleDetail(message.messageId)"
+          :loading-detail="isLoadingArticleDetail(message.messageId)"
           :readonly="false"
           @create-ticket="handleCreateTicket(message.messageId)"
           @feedback="handleFeedback(message.messageId, $event)"
-          @select-related-question="handleSelectRelatedQuestion"
+          @select-related-question="(article) => handleSelectRelatedQuestion(message.messageId, article)"
         />
         <!-- 转人工：仅展示引导话术 + 客服电话卡片，不展示故障排查 -->
         <div
@@ -102,8 +104,17 @@ import AiAnswerCard from '@/components/AiAnswerCard.vue'
 // import QuickQuestions from '@/components/QuickQuestions.vue' // 已移除快捷问题显示
 import DevicePicker from '@/components/DevicePicker.vue'
 import { sessionRepo, messageRepo, aiMetaRepo, ticketRepo, ticketLogRepo, deviceRepo, feedbackRepo } from '@/store/repositories'
-import { generateAIResponse } from '@/ai/ai_service'
+import { generateAIResponse, rewriteAttachmentUrlForDev } from '@/ai/ai_service'
+import { getArticleDetail } from '@/api/knowledge'
 import type { ChatMessage, Device, AIResponseMeta, RelatedArticle, TechnicalResource } from '@/models/types'
+
+/** 当前选中的「其他问题」详情（与首条「最有可能」并列展示用） */
+interface SelectedArticleDetail {
+  topCauses: string[]
+  steps: Array<{ title?: string; action?: string; expect?: string; next?: string }>
+  solution: { temporary: string; final: string }
+  technicalResources: TechnicalResource[]
+}
 // import demoQuestionsData from '@/mock/demo_questions.json' // 已移除演示问题
 
 const route = useRoute()
@@ -126,6 +137,10 @@ const errorMessage = ref<string | null>(null)
 // 审计相关：后端返回的会话 ID（用于后续消息关联）
 const backendConversationId = ref<string | null>(null)
 
+// 点击「其他问题」时按需拉取的详情，key = messageId
+const selectedArticleDetailsByMessageId = ref<Record<string, SelectedArticleDetail | null>>({})
+const loadingArticleDetailForMessageId = ref<string | null>(null)
+
 // 会话存储 key
 const CONVERSATION_ID_KEY = 'ai_conversation_id'
 
@@ -140,10 +155,12 @@ function shouldShowAnswerCard(messageId: string): boolean {
   return meta != null && meta.replyMode !== 'conversation' && meta.replyMode !== 'handoff'
 }
 
-// 获取解决方案（从 AI 响应中提取）
+// 获取解决方案（选中「其他问题」时用其 solution，否则用首条 meta）
 function getSolution(messageId: string): { temporary: string; final: string } {
+  const selected = getSelectedArticleDetail(messageId)
+  if (selected?.solution) return selected.solution
   const meta = getAIMeta(messageId)
-  if (!meta || !meta.solution) return { temporary: '', final: '' }
+  if (!meta?.solution) return { temporary: '', final: '' }
   return meta.solution
 }
 
@@ -153,10 +170,22 @@ function getRelatedArticles(messageId: string): RelatedArticle[] | undefined {
   return meta?.relatedArticles
 }
 
-// 获取技术资料（附件）
+// 获取技术资料（附件）：选中其他问题时用其附件，否则用首条 meta
 function getTechnicalResources(messageId: string): TechnicalResource[] | undefined {
+  const selected = selectedArticleDetailsByMessageId.value[messageId]
+  if (selected) return selected.technicalResources ?? []
   const meta = getAIMeta(messageId)
   return meta?.technicalResources
+}
+
+// 当前消息是否正在拉取「其他问题」详情
+function isLoadingArticleDetail(messageId: string): boolean {
+  return loadingArticleDetailForMessageId.value === messageId
+}
+
+// 当前消息选中的文章详情（点击其他问题时拉取）；为 null 时展示首条「最有可能」的数据
+function getSelectedArticleDetail(messageId: string): SelectedArticleDetail | null {
+  return selectedArticleDetailsByMessageId.value[messageId] ?? null
 }
 
 // 是否从欢迎页直接进入（未选设备，使用默认）
@@ -263,8 +292,15 @@ async function sendMessage() {
 
   // 调用 AI
   if (!device.value) return
-  
+
   isLoading.value = true
+  const loadingTimeoutId = window.setTimeout(() => {
+    if (isLoading.value) {
+      isLoading.value = false
+      errorMessage.value = '请求超时，请检查网络或稍后重试'
+      setTimeout(() => { errorMessage.value = null }, 5000)
+    }
+  }, 65000)
   try {
     // 传入后端会话 ID（首次为空，后续带上）
     const aiResponse = await generateAIResponse(
@@ -339,6 +375,7 @@ async function sendMessage() {
     messages.value.push(errorMsg)
     scrollToBottom()
   } finally {
+    window.clearTimeout(loadingTimeoutId)
     isLoading.value = false
   }
 }
@@ -407,18 +444,40 @@ function handleFeedback(_messageId: string, isResolved: boolean) {
 }
 
 /**
- * 处理点击"其他可能匹配的问题"
- * 将选中的问题作为新输入自动发送查询
+ * 处理点击问题列表：首条「最有可能」直接展开已有数据；其他问题再请求详情后展示
  */
-function handleSelectRelatedQuestion(question: string) {
-  if (!question || isLoading.value) return
-  
-  // 将问题填入输入框并自动发送
-  inputText.value = question
-  // 使用 nextTick 确保输入框更新后再发送
-  nextTick(() => {
-    sendMessage()
-  })
+async function handleSelectRelatedQuestion(messageId: string, article: RelatedArticle) {
+  const related = getRelatedArticles(messageId)
+  const primaryId = related?.[0]?.id
+  // 点击的是首条（最有可能）→ 直接展示当前 meta，清空选中详情
+  if (primaryId != null && article.id === primaryId) {
+    selectedArticleDetailsByMessageId.value[messageId] = null
+    return
+  }
+  // 点击其他问题 → 按需拉取该文章详情
+  loadingArticleDetailForMessageId.value = messageId
+  try {
+    const res = await getArticleDetail(article.id)
+    const detail: SelectedArticleDetail = {
+      topCauses: Array.isArray(res.top_causes) ? res.top_causes : [],
+      steps: Array.isArray(res.steps) ? res.steps : [],
+      solution: res.solution && typeof res.solution === 'object' ? res.solution : { temporary: '', final: '' },
+      technicalResources: (res.technical_resources ?? []).filter(r => r != null).map(r => ({
+        id: Number((r as any)?.id) || 0,
+        name: (r as any)?.name ?? '',
+        type: (r as any)?.type ?? 'other',
+        url: rewriteAttachmentUrlForDev((r as any)?.url ?? ''),
+        size: (r as any)?.size,
+        duration: (r as any)?.duration
+      }))
+    }
+    selectedArticleDetailsByMessageId.value[messageId] = detail
+  } catch (e) {
+    console.error('拉取文章详情失败:', e)
+    selectedArticleDetailsByMessageId.value[messageId] = null
+  } finally {
+    loadingArticleDetailForMessageId.value = null
+  }
 }
 
 function handleDeviceChange(newDevice: Device) {

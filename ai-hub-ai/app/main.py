@@ -57,8 +57,9 @@ def create_app() -> FastAPI:
     # 中间件
     app.add_middleware(RequestLogMiddleware)
 
-    # 注册 v1 路由（路径与原先保持一致，包含向量能力闭环）
+    # 注册 v1 路由：无前缀（智能客服 / 代理转发后为 /api/chat/search、/import/excel）+ 带 /python-api（知识库导入 4013 请求 /python-api/import/excel）
     app.include_router(api_router)
+    app.include_router(api_router, prefix="/python-api")
     # 意图分流聊天入口：POST /chat
     app.include_router(chat_router)
 

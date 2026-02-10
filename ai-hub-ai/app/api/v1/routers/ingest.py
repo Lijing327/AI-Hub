@@ -30,12 +30,31 @@ def ingest_batch(req: IngestBatchRequest):
     return IngestBatchResponse(**result)
 
 
+@router.post("/ingest/clear")
+def ingest_clear():
+    """
+    仅清空向量库（删除集合并重建空集合）。
+    若要做全量覆盖，可直接用 POST /ingest/all 且 body 里 clear_first: true，无需先调本接口。
+    """
+    svc = get_ingest_service()
+    svc.clear_vector_collection()
+    return {"ok": True, "message": "向量库已清空"}
+
+
 @router.post("/ingest/all", response_model=IngestBatchResponse)
 def ingest_all(req: IngestAllRequest):
-    """全量重建：从 SQL 拉取 id 列表，再批量重建"""
+    """
+    全量重建：从 SQL 拉取 id 列表，再批量重建。
+    请求体里传 clear_first: true 可先清空向量库再写入，实现全量覆盖（主库更新后必用，避免旧 article_id 导致检索到空）。
+    """
     svc = get_ingest_service()
     tenant_id = req.tenant_id or settings.DEFAULT_TENANT
-    result = svc.rebuild_all(tenant_id=tenant_id, status=req.status, limit=req.limit)
+    result = svc.rebuild_all(
+        tenant_id=tenant_id,
+        status=req.status,
+        limit=req.limit,
+        clear_first=req.clear_first,
+    )
     return IngestBatchResponse(**result)
 
 

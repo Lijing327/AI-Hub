@@ -23,6 +23,15 @@ class ChromaVectorStore(IVectorStore):
             logger.debug("删除集合时忽略: %s", e)
         self._col = self._client.get_or_create_collection(name=self._collection_name)
 
+    def clear_collection(self) -> None:
+        """清空向量库（删集合并重建），用于全量覆盖前先去掉旧 article_id。"""
+        try:
+            self._client.delete_collection(name=self._collection_name)
+            logger.info("Chroma 已清空集合: %s（全量重建前）", self._collection_name)
+        except Exception as e:
+            logger.debug("清空集合时忽略: %s", e)
+        self._col = self._client.get_or_create_collection(name=self._collection_name)
+
     def upsert(self, ids: list[str], embeddings: list[list[float]], documents: list[str], metadatas: list[dict]) -> int:
         try:
             self._col.upsert(ids=ids, embeddings=embeddings, documents=documents, metadatas=metadatas)

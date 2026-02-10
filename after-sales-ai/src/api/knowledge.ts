@@ -163,6 +163,29 @@ export interface ChatResponse {
   message_id?: string
 }
 
+/** 单条文章详情（点击「其他问题」时按需拉取） */
+export interface ArticleDetailResponse {
+  top_causes: string[]
+  steps: Array<{ title?: string; action?: string; expect?: string; next?: string }>
+  solution: { temporary: string; final: string }
+  technical_resources?: TechnicalResourceDto[]
+  issue_category?: string
+  alarm_code?: string
+}
+
+/**
+ * 按文章 ID 拉取详情（可能原因、排查步骤、解决方案、参考资料）
+ * 供前端点击「其他问题」时调用，无需首次请求带全量
+ */
+export async function getArticleDetail(articleId: number): Promise<ArticleDetailResponse> {
+  const pythonApiBaseUrl = import.meta.env.VITE_PYTHON_API_BASE_URL || '/python-api'
+  const response = await axios.get<ArticleDetailResponse>(
+    `${pythonApiBaseUrl}/api/chat/article-detail`,
+    { params: { article_id: articleId }, timeout: 15000 }
+  )
+  return response.data
+}
+
 /**
  * 调用Python服务进行智能搜索和回答
  */
@@ -173,11 +196,12 @@ export async function chatSearch(request: ChatRequest): Promise<ChatResponse> {
   const pythonApiBaseUrl = import.meta.env.VITE_PYTHON_API_BASE_URL || '/python-api'
   
   try {
+    // RAG + LLM 较慢，超时设为 60 秒，避免 15s 左右完成的请求被误判超时
     const response = await axios.post<ChatResponse>(
       `${pythonApiBaseUrl}/api/chat/search`,
       request,
       {
-        timeout: 15000,
+        timeout: 60000,
         headers: {
           'Content-Type': 'application/json'
         }

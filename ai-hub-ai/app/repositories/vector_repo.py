@@ -12,6 +12,10 @@ class VectorRepository:
     def delete_by_article(self, tenant_id: str, article_id: int) -> None:
         self._store.delete_by_article(tenant_id, article_id)
 
+    def clear_collection(self) -> None:
+        """清空整个向量集合（全量覆盖前调用）。"""
+        self._store.clear_collection()
+
     def query(self, embedding: list[float], top_k: int, where: dict) -> list[dict]:
         return self._store.query(embedding, top_k, where)
 

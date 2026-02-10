@@ -16,6 +16,7 @@ class IngestAllRequest(BaseModel):
     tenant_id: str | None = None
     status: str | None = None  # 例如：published
     limit: int | None = None  # 开发阶段可限制一下，避免一次跑太大
+    clear_first: bool = False  # True=先清空向量库再全量写入，实现全量覆盖（主库更新后重建用）
 
 
 class IngestBatchResponse(BaseModel):

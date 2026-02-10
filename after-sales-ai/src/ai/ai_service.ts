@@ -55,36 +55,52 @@ export async function generateAIResponse(
 }
 
 /**
+ * 开发环境：把附件 URL 里的 localhost/127.0.0.1 换成当前页面的 origin，
+ * 这样用 IP 访问（如 172.16.15.78:3000）时点击附件不会请求到错误的 localhost。
+ */
+export function rewriteAttachmentUrlForDev(url: string): string {
+  if (!url || typeof url !== 'string') return url || ''
+  if (typeof window === 'undefined') return url
+  const u = url.trim()
+  if (u.startsWith('http://localhost:') || u.startsWith('http://127.0.0.1:')) {
+    try {
+      return u.replace(/^https?:\/\/[^/]+/, window.location.origin)
+    } catch {
+      return u
+    }
+  }
+  return u
+}
+
+/**
  * 将Python服务的响应转换为前端AI响应格式
  */
 function convertChatResponseToAIResponse(chatResponse: ChatResponse): AIResponseWithAudit {
   return {
-    issueCategory: chatResponse.issue_category,
-    alarmCode: chatResponse.alarm_code,
-    confidence: chatResponse.confidence,
-    topCauses: chatResponse.top_causes,
-    steps: chatResponse.steps,
-    solution: chatResponse.solution,
-    safetyTip: chatResponse.safety_tip,
-    citedDocs: chatResponse.cited_docs,
-    shouldEscalate: chatResponse.should_escalate,
-    shortAnswerText: chatResponse.short_answer_text,
-    relatedArticles: chatResponse.related_articles?.map(a => ({
-      id: a.id,
-      title: a.title,
-      questionText: a.questionText
+    issueCategory: chatResponse.issue_category ?? '其他',
+    alarmCode: chatResponse.alarm_code ?? undefined,
+    confidence: Number(chatResponse.confidence) || 0,
+    topCauses: Array.isArray(chatResponse.top_causes) ? chatResponse.top_causes : [],
+    steps: Array.isArray(chatResponse.steps) ? chatResponse.steps : [],
+    solution: chatResponse.solution && typeof chatResponse.solution === 'object' ? chatResponse.solution : { temporary: '', final: '' },
+    safetyTip: chatResponse.safety_tip ?? '',
+    citedDocs: Array.isArray(chatResponse.cited_docs) ? chatResponse.cited_docs : [],
+    shouldEscalate: Boolean(chatResponse.should_escalate),
+    shortAnswerText: chatResponse.short_answer_text ?? '',
+    relatedArticles: chatResponse.related_articles?.filter(a => a != null && (a.id != null || a.title)).map(a => ({
+      id: Number(a?.id) || 0,
+      title: a?.title ?? '',
+      questionText: a?.questionText
     })),
-    // 技术资料（附件）
-    technicalResources: chatResponse.technical_resources?.map(r => ({
-      id: r.id,
-      name: r.name,
-      type: r.type,
-      url: r.url,
-      size: r.size,
-      duration: r.duration
+    technicalResources: chatResponse.technical_resources?.filter(r => r != null).map(r => ({
+      id: Number(r?.id) || 0,
+      name: r?.name ?? '',
+      type: r?.type ?? 'other',
+      url: rewriteAttachmentUrlForDev(r?.url ?? ''),
+      size: r?.size,
+      duration: r?.duration
     })),
-    replyMode: chatResponse.reply_mode,
-    // 审计字段
+    replyMode: chatResponse.reply_mode ?? undefined,
     conversationId: chatResponse.conversation_id,
     messageId: chatResponse.message_id
   }

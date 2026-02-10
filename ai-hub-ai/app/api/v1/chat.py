@@ -3,7 +3,7 @@ import time
 from typing import Optional, List
 from fastapi import APIRouter, HTTPException
 
-from app.schemas.chat import ChatRequest, ChatResponse
+from app.schemas.chat import ChatRequest, ChatResponse, ArticleDetailResponse
 from app.services.chat_service import ChatService, _is_chitchat_question
 from app.core.config import settings
 from app.core.logging_config import get_logger
@@ -25,6 +25,19 @@ def get_chat_service() -> ChatService:
             kb_repo=get_kb_repo(),
         )
     return _chat_service
+
+
+@router.get("/article-detail", response_model=ArticleDetailResponse)
+def get_article_detail(article_id: int):
+    """
+    按文章 ID 返回单条详情（可能原因、排查步骤、解决方案、参考资料）。
+    前端点击「其他问题」时调用，无需首次搜索即拉取全量。
+    """
+    service = get_chat_service()
+    detail = service.get_article_detail(article_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="文章不存在或已删除")
+    return detail
 
 
 @router.post("/search", response_model=ChatResponse)

@@ -1,7 +1,7 @@
 <template>
   <div class="home-page">
     <div class="header">
-      <h1>造型机售后 AI 客服</h1>
+      <h1>造型机技术资源库</h1>
       <p class="subtitle">选择设备开始咨询</p>
     </div>
 

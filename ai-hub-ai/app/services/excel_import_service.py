@@ -75,6 +75,42 @@ class ExcelImportService:
         if df.empty:
             raise HTTPException(status_code=400, detail="Excel 文件为空")
 
+        # 确定“现象”列名（用于后面过滤无效行）
+        phenomenon_col = None
+        for v in fault_phenomenon_columns:
+            nv = normalize_col(v)
+            if nv in norm_columns:
+                phenomenon_col = norm_columns[nv]
+                break
+        if not phenomenon_col and has_fault:
+            for c in df.columns:
+                if "现象" in str(c) or "问题" in str(c) or "故障" in str(c):
+                    phenomenon_col = c
+                    break
+
+        # 使用 header=1 时，首行多为标题行，丢弃避免多导 1 条
+        if header_row == 1 and len(df) > 0:
+            df = df.iloc[1:].reset_index(drop=True)
+            if df.empty:
+                raise HTTPException(status_code=400, detail="Excel 除标题行外无数据")
+
+        # 只保留“现象”列有实质内容的行，避免空行、重复表头行被当作数据（导致 45 条变 50 条等）
+        header_like = {"序号", "现象", "问题", "检查点", "原因", "维修对策", "解决办法", "维修视频", "附件", "故障现象"}
+        if phenomenon_col and phenomenon_col in df.columns:
+            def _valid_phenomenon(val) -> bool:
+                if pd.isna(val):
+                    return False
+                s = str(val).strip()
+                if not s or s.lower() == "nan":
+                    return False
+                if s in header_like or len(s) < 2:
+                    return False
+                return True
+            df = df[df[phenomenon_col].apply(_valid_phenomenon)].reset_index(drop=True)
+
+        if df.empty:
+            raise HTTPException(status_code=400, detail="没有有效数据行（现象列为空或仅为表头）")
+
         # 过滤“型号”列
         cols_drop = [c for c in df.columns if "型号" in str(c).strip()]
         if cols_drop:

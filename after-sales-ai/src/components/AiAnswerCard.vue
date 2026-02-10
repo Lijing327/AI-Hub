@@ -6,61 +6,97 @@
         <span class="category">{{ meta.issueCategory }}</span>
         <span v-if="meta.alarmCode" class="alarm-code">{{ meta.alarmCode }}</span>
       </div>
-      <div class="confidence">置信度: {{ Math.round(meta.confidence * 100) }}%</div>
+      <span class="confidence">置信度: {{ Math.round(meta.confidence * 100) }}%</span>
     </div>
 
     <div class="card-body">
-      <!-- 其他可能匹配的问题（置顶、不折叠、仅显示标题） -->
+      <!-- 问题列表：第一个为最有可能，仅显示标题；选择后再展开完整回答 -->
       <div class="section" v-if="relatedArticles && relatedArticles.length > 0">
         <div class="section-title">请选择要咨询的问题 ({{ relatedArticles.length }}条)</div>
         <div class="related-articles">
           <div
-            v-for="article in relatedArticles"
+            v-for="(article, index) in relatedArticles"
             :key="article.id"
             class="related-article title-only"
-            @click="handleSelectRelatedQuestion(article)"
+            :class="{ 'is-selected': answerExpanded, 'is-first': index === 0 }"
+            @click="handleSelectQuestion(article, index)"
           >
-            <div class="article-title">{{ article.title || article.questionText }}</div>
-          </div>
-        </div>
-      </div>
-
-      <!-- 可能原因 -->
-      <div class="section">
-        <div class="section-title">可能原因</div>
-        <ul class="causes-list">
-          <li v-for="(cause, index) in meta.topCauses" :key="index">{{ cause }}</li>
-        </ul>
-      </div>
-
-      <!-- 排查步骤 -->
-      <div class="section">
-        <div class="section-title">排查步骤</div>
-        <div class="steps-list">
-          <div v-for="(step, index) in meta.steps" :key="index" class="step-item">
-            <div class="step-number">{{ index + 1 }}</div>
-            <div class="step-content">
-              <div class="step-title">{{ step.title }}</div>
-              <div class="step-action">操作：{{ step.action }}</div>
-              <div class="step-expect">预期：{{ step.expect }}</div>
-              <div class="step-next">下一步：{{ step.next }}</div>
+            <div class="article-title">
+              <span v-if="index === 0" class="tag-most-likely">最有可能</span>
+              {{ article.title || article.questionText }}
             </div>
           </div>
         </div>
       </div>
 
-      <!-- 解决方案 -->
-      <div class="section">
-        <div class="section-title">解决方案</div>
-        <div class="solution-item">
-          <div class="solution-label">临时处理：</div>
-          <div class="solution-text">{{ solution.temporary }}</div>
+      <!-- 用户选择问题后再展示：可能原因、排查步骤、解决方案 -->
+      <template v-if="answerExpanded">
+        <div v-if="loadingDetail" class="section loading-detail">正在加载该问题详情…</div>
+        <template v-else>
+          <!-- 可能原因 -->
+          <div class="section">
+            <div class="section-title">可能原因</div>
+            <ul class="causes-list">
+              <li v-for="(cause, index) in displayTopCauses" :key="index">{{ cause }}</li>
+            </ul>
+          </div>
+
+          <!-- 排查步骤 -->
+          <div class="section">
+            <div class="section-title">排查步骤</div>
+            <div class="steps-list">
+              <div v-for="(step, index) in displaySteps" :key="index" class="step-item">
+              <div class="step-number">{{ index + 1 }}</div>
+              <div class="step-content">
+                <div class="step-title">{{ step.title }}</div>
+                <div class="step-action">操作：{{ step.action }}</div>
+                <div class="step-expect">预期：{{ step.expect }}</div>
+                <div class="step-next">下一步：{{ step.next }}</div>
+              </div>
+            </div>
+          </div>
         </div>
-        <div class="solution-item">
-          <div class="solution-label">根本解决：</div>
-          <div class="solution-text">{{ solution.final }}</div>
+
+        <!-- 解决方案 -->
+        <div class="section">
+          <div class="section-title">解决方案</div>
+          <div class="solution-item">
+            <div class="solution-label">临时处理：</div>
+            <div class="solution-text">{{ solution.temporary }}</div>
+          </div>
+          <div class="solution-item">
+            <div class="solution-label">根本解决：</div>
+            <div class="solution-text">{{ solution.final }}</div>
+          </div>
         </div>
-      </div>
+
+        <!-- 参考资料：文件或文件夹（来自知识库附件 + 正文「参考xxx」解析） -->
+        <div class="section" v-if="technicalResources && technicalResources.length > 0">
+          <div class="section-title">参考资料</div>
+          <div class="resources-list">
+            <component
+              v-for="resource in technicalResources"
+              :key="`${resource.id}-${resource.name}`"
+              :is="resource.url ? 'a' : 'div'"
+              :href="resource.url || undefined"
+              :target="resource.url ? '_blank' : undefined"
+              :class="['resource-item', `resource-${resource.type}`, { 'is-folder': resource.type === 'directory' }]"
+            >
+              <span class="resource-icon">{{ getResourceIcon(resource.type) }}</span>
+              <div class="resource-info">
+                <div class="resource-name">{{ resource.name }}</div>
+                <div class="resource-meta">
+                  <span class="resource-type">{{ getResourceTypeName(resource.type) }}</span>
+                  <span v-if="resource.size" class="resource-size">{{ formatFileSize(resource.size) }}</span>
+                  <span v-if="resource.duration" class="resource-duration">{{ formatDuration(resource.duration) }}</span>
+                </div>
+              </div>
+              <span class="resource-action">{{ resource.type === 'directory' ? '打开' : '查看' }}</span>
+            </component>
+          </div>
+        </div>
+        </template>
+      </template>
 
       <!-- 安全提示 -->
       <div v-if="meta.safetyTip" class="safety-tip">
@@ -68,7 +104,7 @@
       </div>
 
       <!-- 参考知识 -->
-      <div class="section" v-if="meta.citedDocs.length > 0">
+      <!-- <div class="section" v-if="meta.citedDocs.length > 0">
         <div class="section-title">参考知识</div>
         <div class="cited-docs">
           <div v-for="doc in meta.citedDocs" :key="doc.kbId" class="cited-doc">
@@ -76,33 +112,7 @@
             <div class="doc-excerpt">{{ doc.excerpt }}</div>
           </div>
         </div>
-      </div>
-
-      <!-- 专业资源（技术资料/附件） -->
-      <div class="section" v-if="technicalResources && technicalResources.length > 0">
-        <div class="section-title">专业资源</div>
-        <div class="resources-list">
-          <a
-            v-for="resource in technicalResources"
-            :key="resource.id"
-            :href="resource.url"
-            target="_blank"
-            class="resource-item"
-            :class="`resource-${resource.type}`"
-          >
-            <span class="resource-icon">{{ getResourceIcon(resource.type) }}</span>
-            <div class="resource-info">
-              <div class="resource-name">{{ resource.name }}</div>
-              <div class="resource-meta">
-                <span class="resource-type">{{ getResourceTypeName(resource.type) }}</span>
-                <span v-if="resource.size" class="resource-size">{{ formatFileSize(resource.size) }}</span>
-                <span v-if="resource.duration" class="resource-duration">{{ formatDuration(resource.duration) }}</span>
-              </div>
-            </div>
-            <span class="resource-action">查看</span>
-          </a>
-        </div>
-      </div>
+      </div> -->
 
     </div>
 
@@ -117,8 +127,16 @@
 </template>
 
 <script setup lang="ts">
-import { defineProps, defineEmits, withDefaults } from 'vue'
+import { ref, watch, computed } from 'vue'
 import type { AIResponseMeta, RelatedArticle, TechnicalResource } from '@/models/types'
+
+/** 选中「其他问题」时按需拉取的详情，用于覆盖首条「最有可能」的展示 */
+export interface SelectedArticleDetail {
+  topCauses: string[]
+  steps: Array<{ title?: string; action?: string; expect?: string; next?: string }>
+  solution: { temporary: string; final: string }
+  technicalResources: TechnicalResource[]
+}
 
 interface Props {
   meta: AIResponseMeta
@@ -128,6 +146,10 @@ interface Props {
   }
   relatedArticles?: RelatedArticle[] // 其他可能匹配的知识条目
   technicalResources?: TechnicalResource[] // 技术资料（附件）
+  /** 点击其他问题时拉取的详情，有则展开区用其 topCauses/steps，solution 与 technicalResources 由父组件通过 solution/technicalResources 传入 */
+  selectedDetail?: SelectedArticleDetail | null
+  /** 是否正在拉取选中问题详情 */
+  loadingDetail?: boolean
   readonly?: boolean // 只读模式，用于会话详情页
 }
 
@@ -138,8 +160,16 @@ const props = withDefaults(defineProps<Props>(), {
 const emit = defineEmits<{
   createTicket: []
   feedback: [isResolved: boolean]
-  selectRelatedQuestion: [question: string]
+  selectRelatedQuestion: [article: RelatedArticle]
 }>()
+
+// 是否已展开完整回答（用户选择问题后才展开；只读模式如会话详情默认展开）
+const answerExpanded = ref(false)
+watch(() => props.readonly, (readonly) => { if (readonly) answerExpanded.value = true }, { immediate: true })
+
+// 展开区展示：选中「其他问题」时用 selectedDetail，否则用首条 meta
+const displayTopCauses = computed(() => props.selectedDetail?.topCauses ?? props.meta.topCauses ?? [])
+const displaySteps = computed(() => props.selectedDetail?.steps ?? props.meta.steps ?? [])
 
 function handleCreateTicket() {
   emit('createTicket')
@@ -149,33 +179,38 @@ function handleFeedback(isResolved: boolean) {
   emit('feedback', isResolved)
 }
 
-function handleSelectRelatedQuestion(article: RelatedArticle) {
-  // 优先使用 title，其次 questionText
-  const question = article.title || article.questionText || ''
-  if (question && !props.readonly) {
-    emit('selectRelatedQuestion', question)
-  }
+function handleSelectQuestion(article: RelatedArticle, _index: number) {
+  if (props.readonly) return
+  // 展开完整回答（可能原因、排查步骤、解决方案等）；父组件根据是否首条决定直接展示或拉取详情
+  answerExpanded.value = true
+  emit('selectRelatedQuestion', article)
 }
 
-// 获取资源类型图标
+function handleSelectRelatedQuestion(article: RelatedArticle) {
+  handleSelectQuestion(article, -1)
+}
+
+// 获取资源类型图标（含文件夹）
 function getResourceIcon(type: string): string {
   const icons: Record<string, string> = {
     image: '🖼️',
     video: '🎬',
     document: '📄',
     pdf: '📑',
+    directory: '📁',
     other: '📎'
   }
   return icons[type] || icons.other
 }
 
-// 获取资源类型名称
+// 获取资源类型名称（含文件夹）
 function getResourceTypeName(type: string): string {
   const names: Record<string, string> = {
     image: '图片',
     video: '视频',
     document: '文档',
     pdf: 'PDF',
+    directory: '文件夹',
     other: '文件'
   }
   return names[type] || names.other
@@ -455,6 +490,12 @@ function formatDuration(seconds: number): string {
   border-radius: 4px;
 }
 
+.resource-directory .resource-type,
+.resource-item.is-folder .resource-type {
+  background: #e8f5e9;
+  color: #18a058;
+}
+
 .resource-action {
   font-size: 13px;
   color: #667eea;
@@ -515,7 +556,26 @@ function formatDuration(seconds: number): string {
   font-weight: 600;
   font-size: 14px;
   color: #1890ff;
-  margin-bottom: 6px;
+  margin-bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tag-most-likely {
+  flex-shrink: 0;
+  font-size: 11px;
+  font-weight: 500;
+  color: #18a058;
+  background: #e8f5e9;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.related-article.is-first {
+  border-left-color: #18a058;
+  background: #f0f9ff;
 }
 
 .article-excerpt,
