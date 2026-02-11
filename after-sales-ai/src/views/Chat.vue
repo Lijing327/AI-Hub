@@ -16,7 +16,7 @@
       <div v-if="messages.length === 0 && !isLoading" class="welcome-bubble">
         <div class="welcome-avatar">AI</div>
         <div class="welcome-text">
-          <p>您好，我是造型机售后智能客服。</p>
+          <p>您好，我是造型机技术资源库。</p>
           <p>您可以描述设备现象、报警码或操作问题，我会帮您排查并给出步骤与方案。</p>
         </div>
       </div>

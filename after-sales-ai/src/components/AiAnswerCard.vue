@@ -10,23 +10,34 @@
     </div>
 
     <div class="card-body">
-      <!-- 问题列表：第一个为最有可能，仅显示标题；选择后再展开完整回答 -->
-      <div class="section" v-if="relatedArticles && relatedArticles.length > 0">
-        <div class="section-title">请选择要咨询的问题 ({{ relatedArticles.length }}条)</div>
-        <div class="related-articles">
-          <div
-            v-for="(article, index) in relatedArticles"
-            :key="article.id"
-            class="related-article title-only"
-            :class="{ 'is-selected': answerExpanded, 'is-first': index === 0 }"
-            @click="handleSelectQuestion(article, index)"
-          >
-            <div class="article-title">
-              <span v-if="index === 0" class="tag-most-likely">最有可能</span>
-              {{ article.title || article.questionText }}
+      <!-- 问题列表：可折叠/展开；选择后自动折叠并显示回答；点击标题可再展开 -->
+      <div class="section problem-list-section" v-if="relatedArticles && relatedArticles.length > 0">
+        <div
+          class="section-title clickable"
+          @click="problemListExpanded = !problemListExpanded"
+          role="button"
+          :aria-expanded="problemListExpanded"
+        >
+          <span>请选择要咨询的问题 ({{ relatedArticles.length }}条)</span>
+          <span class="expand-toggle">{{ problemListExpanded ? '折叠' : '展开' }}</span>
+          <span class="expand-icon" :class="{ expanded: problemListExpanded }">▼</span>
+        </div>
+        <transition name="collapse">
+          <div class="related-articles" v-show="problemListExpanded">
+            <div
+              v-for="(article, index) in relatedArticles"
+              :key="article.id"
+              class="related-article title-only"
+              :class="{ 'is-selected': answerExpanded, 'is-first': index === 0 }"
+              @click="handleSelectQuestion(article, index)"
+            >
+              <div class="article-title">
+                <span v-if="index === 0" class="tag-most-likely">最有可能</span>
+                {{ article.title || article.questionText }}
+              </div>
             </div>
           </div>
-        </div>
+        </transition>
       </div>
 
       <!-- 用户选择问题后再展示：可能原因、排查步骤、解决方案 -->
@@ -167,6 +178,9 @@ const emit = defineEmits<{
 const answerExpanded = ref(false)
 watch(() => props.readonly, (readonly) => { if (readonly) answerExpanded.value = true }, { immediate: true })
 
+// 问题列表折叠状态：选择问题后自动折叠，点击标题可再展开
+const problemListExpanded = ref(true)
+
 // 展开区展示：选中「其他问题」时用 selectedDetail，否则用首条 meta
 const displayTopCauses = computed(() => props.selectedDetail?.topCauses ?? props.meta.topCauses ?? [])
 const displaySteps = computed(() => props.selectedDetail?.steps ?? props.meta.steps ?? [])
@@ -183,11 +197,9 @@ function handleSelectQuestion(article: RelatedArticle, _index: number) {
   if (props.readonly) return
   // 展开完整回答（可能原因、排查步骤、解决方案等）；父组件根据是否首条决定直接展示或拉取详情
   answerExpanded.value = true
+  // 选择后折叠问题列表，让回答内容更突出；用户可点击标题再展开
+  problemListExpanded.value = false
   emit('selectRelatedQuestion', article)
-}
-
-function handleSelectRelatedQuestion(article: RelatedArticle) {
-  handleSelectQuestion(article, -1)
 }
 
 // 获取资源类型图标（含文件夹）
@@ -297,6 +309,57 @@ function formatDuration(seconds: number): string {
   margin-bottom: 12px;
   padding-bottom: 8px;
   border-bottom: 2px solid #f0f0f0;
+}
+
+/* 问题列表：可折叠，标题可点击 */
+.problem-list-section .section-title.clickable {
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  user-select: none;
+  margin-bottom: 0;
+}
+
+.problem-list-section .section-title.clickable:hover {
+  color: #1890ff;
+}
+
+.expand-toggle {
+  font-size: 13px;
+  font-weight: 500;
+  color: #1890ff;
+  margin-left: auto;
+}
+
+.expand-icon {
+  font-size: 12px;
+  color: #666;
+  transition: transform 0.3s ease;
+}
+
+.expand-icon.expanded {
+  transform: rotate(180deg);
+}
+
+.problem-list-section .related-articles {
+  margin-top: 12px;
+}
+
+/* 折叠/展开动画 */
+.collapse-enter-active,
+.collapse-leave-active {
+  transition: opacity 0.25s ease;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  opacity: 0;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  opacity: 1;
 }
 
 .causes-list {

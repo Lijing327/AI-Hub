@@ -10,7 +10,7 @@
             <path d="M20 24l12-8 12 8v4H20v-4z" stroke="currentColor" stroke-width="2" fill="none"/>
           </svg>
         </div>
-        <h1 class="title">造型机售后智能客服</h1>
+        <h1 class="title">造型机技术资源库</h1>
         <p class="subtitle">设备故障、报警码、操作问题，随时问我</p>
       </div>
 
