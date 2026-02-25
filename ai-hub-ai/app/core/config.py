@@ -7,7 +7,7 @@ from pathlib import Path
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # 一键切换：True = 用 .env.production，False = 用 .env
-USE_PRODUCTION = False
+USE_PRODUCTION = True
 
 # 项目根目录：app/core/config.py -> app -> 项目根
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent

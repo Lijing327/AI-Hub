@@ -16,6 +16,38 @@ from app.core.logging_config import get_logger
 logger = get_logger(__name__)
 
 
+def extract_video_names_from_ref(video_ref: str) -> list[str]:
+    """
+    从「维修视频」列文本中提取所有视频名称，供加入 question_text 以便按视频名检索。
+    支持格式：参考"xxx"、参考：xxx、参考 xxx；多引用用换行或分号分隔。
+    """
+    if not video_ref or not isinstance(video_ref, str):
+        return []
+    names: list[str] = []
+    seen: set[str] = set()
+    for line in video_ref.split("\n"):
+        for part in re.split(r"[；;]", line.strip()):
+            part = part.strip()
+            if not part:
+                continue
+            # 处理 参考"xxx" 或 参考"xxx" 参考"yyy" 在同一行
+            if part.count("参考") > 1 or '"' in part or '"' in part or '"' in part:
+                matches = re.findall(r'参考["""""]([^"""""]+)["""""]', part)
+                for m in matches:
+                    n = m.strip().strip('"""\'""\'')
+                    if n and n.lower() != "nan" and n not in seen:
+                        seen.add(n)
+                        names.append(n)
+                continue
+            fn = extract_filename_from_reference(part)
+            if fn:
+                fn = fn.strip('"""\'""\'《》【】[]()（）').strip()
+                if fn and fn not in seen:
+                    seen.add(fn)
+                    names.append(fn)
+    return names
+
+
 def clean_bracketed_labels(text: str) -> str:
     """
     清理文本中的中括号标签和列标题
@@ -145,7 +177,12 @@ def map_excel_row_to_article(
     title = clean_bracketed_labels(phenomenon.strip())
     if not title:
         return None
-    question_text = clean(phenomenon.strip()) if phenomenon.strip() else None
+    # 现象 + 维修视频名称，使视频名也能像「现象」一样被检索
+    question_parts = [clean(phenomenon.strip())] if phenomenon.strip() else []
+    video_names = extract_video_names_from_ref(video_ref)
+    if video_names:
+        question_parts.append(" ".join(video_names))
+    question_text = "\n".join(question_parts) if question_parts else None
     cause_text = clean(checkpoints.strip()) if checkpoints.strip() else None
 
     solution_parts = [clean(solution)] if solution.strip() else []

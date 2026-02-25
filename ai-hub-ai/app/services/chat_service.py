@@ -278,6 +278,42 @@ def determine_issue_category(
     return "其他"
 
 
+def _reorder_articles_by_video_match(articles: list, query: str) -> list:
+    """
+    若用户问题与某条目的维修视频名称高度相关，将该条目置于首位（最有可能）。
+    支持：query 包含视频名、视频名包含 query（如「曲线轨」匹配「曲线轨的调节」）。
+    """
+    if not articles or not query or len(query.strip()) < 2:
+        return articles
+    query_clean = query.strip()
+
+    def _get_texts(art) -> tuple:
+        if hasattr(art, "solution_text"):
+            return art.solution_text, art.cause_text
+        return art.get("solutionText"), art.get("causeText")
+
+    def _has_video_match(art) -> bool:
+        sol, cause = _get_texts(art)
+        ref_names = _extract_reference_names(sol, cause)
+        for ref in ref_names:
+            if not ref or len(ref) < 2:
+                continue
+            if query_clean in ref or ref in query_clean:
+                return True
+        return False
+
+    matched: List[Any] = []
+    unmatched: List[Any] = []
+    for a in articles:
+        if _has_video_match(a):
+            matched.append(a)
+        else:
+            unmatched.append(a)
+    if matched:
+        logger.info("维修视频名称匹配重排: 查询=%r, 提升 %d 条至首位", query_clean[:30], len(matched))
+    return matched + unmatched
+
+
 def _extract_reference_names(solution_text: Optional[str], cause_text: Optional[str]) -> List[str]:
     """从解决方案/原因文本中提取所有「参考xxx」引用名，去重后返回"""
     text = (solution_text or "") + "\n" + (cause_text or "")
@@ -741,7 +777,7 @@ class ChatService:
                 hits = self._query_service.query(
                     tenant_id=tenant_id,
                     query_text=request.question,
-                    top_k=10,
+                    top_k=5,
                 )
                 if hits:
                     article_ids = [h["article_id"] for h in hits]
@@ -755,6 +791,8 @@ class ChatService:
                             articles.append(article)
                     
                     if articles:
+                        # 若用户问题与维修视频名称高度相关，将匹配条目置于首位（最有可能）
+                        articles = _reorder_articles_by_video_match(articles, request.question)
                         logger.info("成功读取 %d 条 article 数据", len(articles))
                         return self._kb_article_to_chat_response(articles)
                     else:
@@ -769,7 +807,7 @@ class ChatService:
             search_result = await self.dotnet_client.search_knowledge(
                 keyword=request.question,
                 page_index=1,
-                page_size=10,
+                page_size=5,
             )
         except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as e:
             logger.warning("知识库请求失败，尝试 AI 兜底: %s", e)
@@ -814,7 +852,7 @@ class ChatService:
                     continue
                 try:
                     sr = await self.dotnet_client.search_knowledge(
-                        keyword=kw, page_index=1, page_size=10
+                        keyword=kw, page_index=1, page_size=5
                     )
                     it = sr.get("items", [])
                     if it:
@@ -826,6 +864,9 @@ class ChatService:
                 except Exception as e:
                     logger.debug("扩展关键词检索失败 kw=%s: %s", kw, e)
                     continue
+
+        # 若用户问题与维修视频名称高度相关，将匹配条目置于首位（最有可能）
+        items = _reorder_articles_by_video_match(items, request.question)
 
         if not items:
             if self.deepseek_client.is_available:
