@@ -7,11 +7,12 @@
 from __future__ import annotations
 import time
 from typing import Optional, List
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from app.core.config import settings
 from app.core.logging_config import get_logger
+from app.core.auth import get_current_user
 from app.services.intent_service import classify_intent, Intent
 from app.api.v1.chat import get_chat_service
 from app.schemas.chat import ChatRequest
@@ -26,7 +27,6 @@ class ChatReq(BaseModel):
     """聊天请求"""
     message: str
     conversation_id: Optional[str] = None  # 可选，前端传入；不传则自动创建
-    user_id: Optional[str] = None
     channel: str = "web"
 
 
@@ -104,17 +104,20 @@ def capability_answer() -> str:
 
 
 @router.post("", response_model=ChatResp)
-async def chat(req: ChatReq):
+async def chat(request: Request, req: ChatReq):
     """聊天入口：意图分类 -> RAG/闲聊 -> 返回"""
     start_time = time.time()
     audit = get_audit_client()
-    
+
+    # 获取当前登录用户 ID（从 JWT token）
+    user_id = await get_current_user(request)
+
     # 1. 准备 conversation_id
     conversation_id = req.conversation_id
     if not conversation_id and audit.is_enabled:
         conversation_id = await audit.start_conversation(
             tenant_id=settings.DEFAULT_TENANT,
-            user_id=req.user_id,
+            user_id=user_id,  # 使用从 JWT token 解析的用户 ID
             channel=req.channel,
         )
     

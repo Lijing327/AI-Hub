@@ -27,7 +27,7 @@
           <span class="btn-text">开始咨询</span>
           <span class="btn-arrow">→</span>
         </button>
-        <p class="hint">无需登录，打开即可使用</p>
+        <p class="hint"></p>
         <router-link to="/home" class="link-device">指定设备再咨询</router-link>
       </div>
     </div>

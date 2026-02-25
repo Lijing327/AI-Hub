@@ -1,7 +1,7 @@
 """智能客服问答接口（v1）"""
 import time
 from typing import Optional, List
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 
 from app.schemas.chat import ChatRequest, ChatResponse, ArticleDetailResponse
 from app.services.chat_service import ChatService, _is_chitchat_question
@@ -9,6 +9,7 @@ from app.core.config import settings
 from app.core.logging_config import get_logger
 from app.api.deps import get_query_service, get_kb_repo
 from app.audit.audit_client import get_audit_client
+from app.core.auth import get_current_user
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/api/chat", tags=["智能客服"])
@@ -41,7 +42,10 @@ def get_article_detail(article_id: int):
 
 
 @router.post("/search", response_model=ChatResponse)
-async def search_and_answer(request: ChatRequest):
+async def search_and_answer(
+    request: ChatRequest,
+    authorization: str = None
+):
     """
     搜索知识库并生成AI回答
     支持审计日志：
@@ -52,13 +56,19 @@ async def search_and_answer(request: ChatRequest):
     start_time = time.time()
     audit = get_audit_client()
     service = get_chat_service()
-    
-    # 1. 准备 conversation_id
+
+    # 1. 准备用户ID（从认证头获取，如果有的话）
+    current_user_id = request.user_id
+    if authorization and authorization.startswith("Bearer "):
+        # 如果有JWT token，使用它作为user_id
+        current_user_id = f"jwt_{authorization.split(' ')[1][:8]}"
+
+    # 2. 准备 conversation_id
     conversation_id = request.conversation_id
     if not conversation_id and audit.is_enabled:
         conversation_id = await audit.start_conversation(
             tenant_id=request.tenant_id or settings.DEFAULT_TENANT,
-            user_id=request.user_id,
+            user_id=current_user_id,
             channel=request.channel,
         )
     

@@ -75,6 +75,11 @@ class Settings(BaseSettings):
     # 审计日志（调用 .NET internal API 记录对话全链路）
     ENABLE_AUDIT_LOG: bool = True
 
+    # JWT 认证（与 .NET 后端保持一致）
+    JWT_SECRET: str = "your-super-secret-jwt-key-123456789"
+    JWT_ISSUER: str = "ai-hub"
+    JWT_AUDIENCE: str = "ai-hub-clients"
+
 
 settings = Settings()
 

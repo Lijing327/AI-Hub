@@ -2,8 +2,13 @@ using ai_hub_service.Data;
 using ai_hub_service.Services;
 using ai_hub_service.Middleware;
 using ai_hub_service.Modules.AiAudit.Services;
+using AiHub.Services;
+using AiHub.Middleware;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using AiHub.Utils;
+using AiHub.Configurations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -22,6 +27,33 @@ builder.Services.AddScoped<IKnowledgeArticleService, KnowledgeArticleService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IIndexService, IndexService>();
 builder.Services.AddScoped<IAiAuditService, AiAuditService>();
+
+// 注册认证服务
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<PasswordHasher>();
+
+// 配置JWT设置
+var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
+builder.Services.AddSingleton(jwtSettings!);
+builder.Services.AddSingleton<JwtUtils>();
+
+// 注册JWT认证
+builder.Services.AddAuthentication("Bearer")
+    .AddJwtBearer(options =>
+    {
+        options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+        {
+            ValidateIssuer = true,
+            ValidateAudience = true,
+            ValidateLifetime = true,
+            ValidateIssuerSigningKey = true,
+            ValidIssuer = jwtSettings?.Issuer,
+            ValidAudience = jwtSettings?.Audience,
+            IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+                System.Text.Encoding.UTF8.GetBytes(jwtSettings?.Secret ?? "")
+            )
+        };
+    });
 
 // 配置CORS
 var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>() 
@@ -76,6 +108,9 @@ app.UseMiddleware<TenantMiddleware>();
 
 // 添加内部 API 鉴权中间件（必须在路由之前，租户中间件之后）
 app.UseMiddleware<InternalApiAuthMiddleware>();
+
+// 添加JWT中间件（必须在认证之后，路由之前）
+app.UseJwtMiddleware();
 
 // 配置静态文件服务（用于提供上传的文件访问）
 var uploadsPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads");
@@ -146,5 +181,55 @@ app.MapControllers();
 
 // 配置根路径，重定向到Swagger
 app.MapGet("/", () => Results.Redirect("/swagger")).ExcludeFromDescription();
+
+// 初始化数据库并创建测试用户
+using (var scope = app.Services.CreateScope())
+{
+    var services = scope.ServiceProvider;
+    var logger = services.GetRequiredService<ILogger<Program>>();
+
+    try
+    {
+        var context = services.GetRequiredService<ApplicationDbContext>();
+
+        // 应用待执行的迁移
+        var pendingMigrations = await context.Database.GetPendingMigrationsAsync();
+        if (pendingMigrations.Any())
+        {
+            logger.LogInformation("正在应用 {Count} 个数据库迁移...", pendingMigrations.Count());
+            await context.Database.MigrateAsync();
+            logger.LogInformation("数据库迁移应用完成");
+        }
+        else
+        {
+            logger.LogInformation("数据库已是最新状态");
+        }
+
+        // 创建测试用户（仅开发环境）
+        if (app.Environment.IsDevelopment())
+        {
+            var passwordHasher = services.GetRequiredService<PasswordHasher>();
+            var testPhone = "13800138000";
+
+            var existingUser = await context.Users.FirstOrDefaultAsync(u => u.Phone == testPhone);
+            if (existingUser == null)
+            {
+                var testUser = new AiHub.Models.User
+                {
+                    Phone = testPhone,
+                    PasswordHash = passwordHasher.HashPassword("123456"),
+                    Status = "active"
+                };
+                context.Users.Add(testUser);
+                await context.SaveChangesAsync();
+                logger.LogInformation("已创建测试用户：手机号={Phone}, 密码=123456", testPhone);
+            }
+        }
+    }
+    catch (Exception ex)
+    {
+        logger.LogError(ex, "数据库初始化时发生错误");
+    }
+}
 
 app.Run();

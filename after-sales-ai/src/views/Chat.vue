@@ -192,6 +192,13 @@ function getSelectedArticleDetail(messageId: string): SelectedArticleDetail | nu
 const isDefaultDevice = ref(false)
 
 onMounted(async () => {
+  // 检查是否已登录
+  const token = localStorage.getItem('token')
+  if (!token) {
+    router.push('/login')
+    return
+  }
+
   // 初始化设备
   allDevices.value = deviceRepo.getAll()
   let deviceId = route.query.deviceId as string

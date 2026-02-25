@@ -808,6 +808,7 @@ class ChatService:
                 keyword=request.question,
                 page_index=1,
                 page_size=5,
+                user_id=request.user_id,
             )
         except (httpx.ConnectError, httpx.TimeoutException, httpx.HTTPStatusError) as e:
             logger.warning("知识库请求失败，尝试 AI 兜底: %s", e)
@@ -852,7 +853,7 @@ class ChatService:
                     continue
                 try:
                     sr = await self.dotnet_client.search_knowledge(
-                        keyword=kw, page_index=1, page_size=5
+                        keyword=kw, page_index=1, page_size=5, user_id=request.user_id
                     )
                     it = sr.get("items", [])
                     if it:

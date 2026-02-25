@@ -26,14 +26,20 @@ class DotnetClient:
         self.internal_token = internal_token or settings.INTERNAL_TOKEN
         self.timeout = timeout
 
-    def _headers(self, use_internal_token: bool = False) -> Dict[str, str]:
-        """请求头：租户 ID 必带，内部接口需带 Internal-Token"""
+    def _headers(self, use_internal_token: bool = False, user_id: Optional[str] = None) -> Dict[str, str]:
+        """请求头：租户 ID 必带，内部接口需带 Internal-Token，用户认证接口需带 Bearer token"""
         h = {
             "Content-Type": "application/json",
             "X-Tenant-Id": self.tenant_id,
         }
         if use_internal_token:
             h["X-Internal-Token"] = self.internal_token
+        if user_id:
+            # 如果是JWT token格式，添加Bearer前缀
+            if user_id.startswith("jwt_"):
+                h["Authorization"] = f"Bearer {user_id[4:]}"
+            else:
+                h["X-User-ID"] = user_id
         return h
 
     async def batch_create_articles(self, articles: List[Dict[str, Any]]) -> Dict[str, Any]:
@@ -74,6 +80,7 @@ class DotnetClient:
         page_index: int = 1,
         page_size: int = 10,
         status: Optional[str] = None,
+        user_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         搜索知识条目
@@ -91,7 +98,7 @@ class DotnetClient:
             response = await client.get(
                 url,
                 params=params,
-                headers=self._headers(use_internal_token=False),
+                headers=self._headers(use_internal_token=False, user_id=user_id),
                 timeout=10.0,
             )
             response.raise_for_status()

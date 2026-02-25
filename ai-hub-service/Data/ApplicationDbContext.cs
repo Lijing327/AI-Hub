@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using ai_hub_service.Models;
 using ai_hub_service.Modules.AiAudit.Entities;
+using AiHub.Models;
 
 namespace ai_hub_service.Data;
 
@@ -35,6 +36,11 @@ public class ApplicationDbContext : DbContext
     public DbSet<AiDecisionLog> AiDecisionLogs { get; set; }
     public DbSet<AiRetrievalLog> AiRetrievalLogs { get; set; }
     public DbSet<AiResponse> AiResponses { get; set; }
+
+    /// <summary>
+    /// 用户表
+    /// </summary>
+    public DbSet<User> Users { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -235,6 +241,24 @@ public class ApplicationDbContext : DbContext
 
             entity.HasIndex(e => e.ResponseTimeMs);
             entity.HasIndex(e => e.IsSuccess);
+        });
+
+        // 配置User实体
+        modelBuilder.Entity<User>(entity =>
+        {
+            entity.ToTable("users");
+            entity.HasKey(e => e.Id);
+            entity.Property(e => e.Id).HasColumnName("id").HasMaxLength(64);
+            entity.Property(e => e.Phone).HasColumnName("phone").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.PasswordHash).HasColumnName("password_hash").HasMaxLength(256).IsRequired();
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(16).IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").IsRequired();
+
+            // 索引
+            entity.HasIndex(e => e.Phone).IsUnique();
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.CreatedAt);
         });
     }
 }

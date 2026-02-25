@@ -12,6 +12,8 @@ import SessionDetail from '@/views/SessionDetail.vue'
 import Tickets from '@/views/Tickets.vue'
 import TicketDetail from '@/views/TicketDetail.vue'
 import Admin from '@/views/Admin.vue'
+import Login from '@/views/Login.vue'
+import Register from '@/views/Register.vue'
 
 const routes = [
   {
@@ -25,19 +27,32 @@ const routes = [
     component: Home
   },
   {
+    path: '/login',
+    name: 'Login',
+    component: Login
+  },
+  {
+    path: '/register',
+    name: 'Register',
+    component: Register
+  },
+  {
     path: '/chat',
     name: 'Chat',
-    component: Chat
+    component: Chat,
+    meta: { requiresAuth: true }
   },
   {
     path: '/history',
     name: 'History',
-    component: History
+    component: History,
+    meta: { requiresAuth: true }
   },
   {
     path: '/session/:id',
     name: 'SessionDetail',
-    component: SessionDetail
+    component: SessionDetail,
+    meta: { requiresAuth: true }
   },
   {
     path: '/tickets',
@@ -64,12 +79,29 @@ const router = createRouter({
 // 路由守卫：确保数据初始化完成
 let initPromise: Promise<void> | null = null
 
-router.beforeEach(async (_to, _from, next) => {
+router.beforeEach(async (to, from, next) => {
   // 确保只初始化一次
   if (!initPromise) {
     initPromise = initIfNeeded()
   }
   await initPromise
+
+  // 检查是否需要认证
+  if (to.meta.requiresAuth) {
+    const token = localStorage.getItem('token')
+    if (!token) {
+      // 未登录，重定向到登录页，并携带当前路由作为redirect参数
+      next({
+        path: '/login',
+        query: { redirect: to.fullPath }
+      })
+      return
+    }
+
+    // 可以在这里添加token验证逻辑
+    // 例如调用 /api/auth/me 验证token是否有效
+  }
+
   next()
 })
 
