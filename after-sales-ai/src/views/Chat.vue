@@ -627,10 +627,6 @@ function scrollToBottom() {
   })
 }
 
-function goBack() {
-  router.push('/') // 返回欢迎页
-}
-
 function goToHistory() {
   router.push({
     path: '/history',

@@ -108,7 +108,7 @@ const isPhoneAccount = computed(() => /^1[3-9]\d{9}$/.test(form.account))
 const errorMessage = ref('')
 const isLoading = ref(false)
 const accountAvailable = ref(true)
-let accountCheckingTimer: NodeJS.Timeout | null = null
+let accountCheckingTimer: ReturnType<typeof setTimeout> | null = null
 
 // 计算是否可以提交（手机号时需填写机器号）
 const canSubmit = computed(() => {

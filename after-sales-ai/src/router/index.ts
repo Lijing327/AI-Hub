@@ -79,7 +79,7 @@ const router = createRouter({
 // 路由守卫：确保数据初始化完成
 let initPromise: Promise<void> | null = null
 
-router.beforeEach(async (to, from, next) => {
+router.beforeEach(async (to, _from, next) => {
   // 确保只初始化一次
   if (!initPromise) {
     initPromise = initIfNeeded()

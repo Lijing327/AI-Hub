@@ -42,33 +42,33 @@ api.interceptors.response.use(
 )
 
 // 登录接口
-export const login = async (data: { account: string; password: string }) => {
+export const login = async (data: { account: string; password: string }): Promise<{ token: string; user: object }> => {
   const response = await api.post('/api/auth/login', data)
-  return response
+  return response as unknown as { token: string; user: object }
 }
 
 // 注册接口（手机号注册时 deviceMN 必填）
-export const register = async (data: { account: string; password: string; deviceMN?: string }) => {
+export const register = async (data: { account: string; password: string; deviceMN?: string }): Promise<{ token: string; user: object }> => {
   const response = await api.post('/api/auth/register', data)
-  return response
+  return response as unknown as { token: string; user: object }
 }
 
 // 获取当前用户信息
-export const getCurrentUser = async () => {
+export const getCurrentUser = async (): Promise<{ id: string; account: string; createdAt: string } | null> => {
   const response = await api.get('/api/auth/me')
-  return response
+  return response as unknown as { id: string; account: string; createdAt: string } | null
 }
 
 // 修改密码
-export const changePassword = async (data: { currentPassword: string; newPassword: string }) => {
+export const changePassword = async (data: { currentPassword: string; newPassword: string }): Promise<{ success: boolean; message?: string }> => {
   const response = await api.post('/api/auth/change-password', data)
-  return response
+  return response as unknown as { success: boolean; message?: string }
 }
 
 // 更新个人资料
-export const updateProfile = async (data: { status?: string }) => {
+export const updateProfile = async (data: { status?: string }): Promise<{ success: boolean; message?: string }> => {
   const response = await api.put('/api/auth/profile', data)
-  return response
+  return response as unknown as { success: boolean; message?: string }
 }
 
 // 导出axios实例供其他地方使用
