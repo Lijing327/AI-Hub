@@ -182,7 +182,10 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## 五、Nginx 配置
 
-**说明**：若 Python 通过公网地址（如 6713）访问 .NET，Nginx 除转发 `/api/` 外，还需转发 **`/internal/`**（审计内部接口），否则 Python 会报连接或 404。
+**说明**：
+- 4013 端口需同时提供前端、.NET API、Python 服务
+- 若 `/api/auth/login`、`/swagger` 返回 404，说明 `/api/` 未正确转发到 .NET，需检查下方配置
+- 若 .NET 在**其他端口**（如 6713），前端 `.env` 的 `VITE_API_BASE` 需改为对应端口
 
 ```nginx
 server {
@@ -192,20 +195,34 @@ server {
     ssl_certificate     /path/to/cert.pem;
     ssl_certificate_key /path/to/key.pem;
 
-    # 前端静态文件
-    location /learning/ {
-        alias /var/www/ai-hub/dist/;
-        index index.html;
-        try_files $uri $uri/ /learning/index.html;
-    }
-
-    # .NET 后端 API
+    # .NET 后端 API（必须，否则 /api/auth/login 等会 404）
     location /api/ {
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+    }
+
+    # Swagger 文档（可选）
+    location /swagger {
+        proxy_pass http://127.0.0.1:5000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+
+    # 客服前端（after-sales-ai，base=/cs/，地址 https://域名:4013/cs/#/）
+    location /cs/ {
+        alias /var/www/cs/dist/;
+        index index.html;
+        try_files $uri $uri/ /cs/index.html;
+    }
+
+    # 知识库前端
+    location /learning/ {
+        alias /var/www/ai-hub/dist/;
+        index index.html;
+        try_files $uri $uri/ /learning/index.html;
     }
 
     # .NET 内部接口（Python 审计写会话/消息等，若 Python 通过本机或 6713 访问 .NET 则必须转发）

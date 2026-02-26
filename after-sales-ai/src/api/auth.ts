@@ -1,6 +1,7 @@
 import axios from 'axios'
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000'
+// 使用 .env 的 VITE_API_BASE，切换本地/域名只需改这一处
+const API_BASE_URL = import.meta.env.VITE_API_BASE ?? ''
 
 // 创建axios实例
 const api = axios.create({

@@ -178,7 +178,8 @@ export interface ArticleDetailResponse {
  * 供前端点击「其他问题」时调用，无需首次请求带全量
  */
 export async function getArticleDetail(articleId: number): Promise<ArticleDetailResponse> {
-  const pythonApiBaseUrl = import.meta.env.VITE_PYTHON_API_BASE_URL || '/python-api'
+  const base = import.meta.env.VITE_PYTHON_BASE ?? import.meta.env.VITE_API_BASE ?? ''
+  const pythonApiBaseUrl = base ? `${base}/python-api` : '/python-api'
   const response = await axios.get<ArticleDetailResponse>(
     `${pythonApiBaseUrl}/api/chat/article-detail`,
     { params: { article_id: articleId }, timeout: 15000 }
@@ -192,8 +193,8 @@ export async function getArticleDetail(articleId: number): Promise<ArticleDetail
 export async function chatSearch(request: ChatRequest): Promise<ChatResponse> {
   console.log('调用Python服务搜索:', request)
   
-  // Python服务地址（通过代理）
-  const pythonApiBaseUrl = import.meta.env.VITE_PYTHON_API_BASE_URL || '/python-api'
+  const base = import.meta.env.VITE_PYTHON_BASE ?? import.meta.env.VITE_API_BASE ?? ''
+  const pythonApiBaseUrl = base ? `${base}/python-api` : '/python-api'
   
   try {
     // RAG + LLM 较慢，超时设为 60 秒，避免 15s 左右完成的请求被误判超时
