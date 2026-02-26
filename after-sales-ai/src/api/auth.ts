@@ -59,6 +59,18 @@ export const getCurrentUser = async () => {
   return response
 }
 
+// 修改密码
+export const changePassword = async (data: { phone: string; currentPassword: string; newPassword: string }) => {
+  const response = await api.post('/api/auth/change-password', data)
+  return response
+}
+
+// 更新个人资料
+export const updateProfile = async (data: { status?: string }) => {
+  const response = await api.put('/api/auth/profile', data)
+  return response
+}
+
 // 导出axios实例供其他地方使用
 export const authService = {
   login,

@@ -248,7 +248,10 @@ public class ApplicationDbContext : DbContext
         {
             entity.ToTable("users");
             entity.HasKey(e => e.Id);
-            entity.Property(e => e.Id).HasColumnName("id").HasMaxLength(64);
+            entity.Property(e => e.Id)
+                  .HasColumnName("id")
+                  .HasMaxLength(64)
+                  .HasDefaultValueSql("NEWID()");
             entity.Property(e => e.Phone).HasColumnName("phone").HasMaxLength(20).IsRequired();
             entity.Property(e => e.PasswordHash).HasColumnName("password_hash").HasMaxLength(256).IsRequired();
             entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(16).IsRequired();

@@ -11,6 +11,8 @@ namespace AiHub.Services
         Task<AuthResponse> RegisterAsync(RegisterRequest request);
         Task<AuthResponse> LoginAsync(LoginRequest request);
         Task<User?> GetUserByIdAsync(string userId);
+        Task<ChangePasswordResult> ChangePasswordAsync(string userId, string currentPassword, string newPassword);
+        Task<UpdateProfileResult> UpdateProfileAsync(string userId, string? status);
     }
 
     public class AuthService : IAuthService
@@ -40,6 +42,7 @@ namespace AiHub.Services
             // 创建新用户
             var user = new User
             {
+                Id = Guid.NewGuid().ToString(),
                 Phone = request.Phone,
                 PasswordHash = _passwordHasher.HashPassword(request.Password),
                 Status = "active"
@@ -91,6 +94,73 @@ namespace AiHub.Services
         public async Task<User?> GetUserByIdAsync(string userId)
         {
             return await _context.Users.FindAsync(userId);
+        }
+
+        public async Task<ChangePasswordResult> ChangePasswordAsync(string userId, string currentPassword, string newPassword)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                return new ChangePasswordResult
+                {
+                    Success = false,
+                    Message = "用户不存在"
+                };
+            }
+
+            if (!_passwordHasher.VerifyPassword(currentPassword, user.PasswordHash))
+            {
+                return new ChangePasswordResult
+                {
+                    Success = false,
+                    Message = "当前密码错误"
+                };
+            }
+
+            user.PasswordHash = _passwordHasher.HashPassword(newPassword);
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return new ChangePasswordResult
+            {
+                Success = true,
+                Message = "密码修改成功"
+            };
+        }
+
+        public async Task<UpdateProfileResult> UpdateProfileAsync(string userId, string? status)
+        {
+            var user = await _context.Users.FindAsync(userId);
+            if (user == null)
+            {
+                return new UpdateProfileResult
+                {
+                    Success = false,
+                    Message = "用户不存在"
+                };
+            }
+
+            if (!string.IsNullOrEmpty(status))
+            {
+                if (status != "active" && status != "disabled")
+                {
+                    return new UpdateProfileResult
+                    {
+                        Success = false,
+                        Message = "无效的状态值，只能是 active 或 disabled"
+                    };
+                }
+                user.Status = status;
+            }
+
+            user.UpdatedAt = DateTime.UtcNow;
+            await _context.SaveChangesAsync();
+
+            return new UpdateProfileResult
+            {
+                Success = true,
+                Message = "资料更新成功"
+            };
         }
     }
 }

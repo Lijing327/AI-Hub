@@ -216,6 +216,7 @@ using (var scope = app.Services.CreateScope())
             {
                 var testUser = new AiHub.Models.User
                 {
+                    Id = Guid.NewGuid().ToString(),
                     Phone = testPhone,
                     PasswordHash = passwordHasher.HashPassword("123456"),
                     Status = "active"

@@ -8,6 +8,25 @@
         <div class="device-serial">{{ isDefaultDevice ? '点击可切换设备' : `SN: ${device?.serialNo}` }}</div>
       </div>
       <button class="btn-history" @click="goToHistory">历史</button>
+      <!-- 用户信息区域 -->
+      <div class="user-info">
+        <div v-if="currentUser" ref="menuContainerRef" class="user-menu-container">
+          <button @click="toggleMenu" class="menu-trigger-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" class="user-icon" fill="currentColor"><path d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z"/></svg>
+          </button>
+          <transition name="fade">
+            <div v-if="isMenuOpen" class="dropdown-menu">
+              <div class="dropdown-item user-phone-display">{{ currentUser.phone }}</div>
+              <div class="dropdown-divider"></div>
+              <button @click="handleChangePassword" class="dropdown-item menu-action">修改密码</button>
+              <button @click="showProfileUpdate = true" class="dropdown-item menu-action">更新资料</button>
+              <div class="dropdown-divider"></div>
+              <button @click="handleLogout" class="dropdown-item logout-action">退出登录</button>
+            </div>
+          </transition>
+        </div>
+        <router-link v-else to="/login" class="btn-login">登录</router-link>
+      </div>
     </div>
 
     <!-- 聊天区 -->
@@ -93,11 +112,65 @@
         />
       </div>
     </div>
+
+    <!-- 修改密码弹窗 -->
+    <div v-if="showPasswordModal" class="modal-overlay" @click.self="showPasswordModal = false">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3>修改密码</h3>
+          <button class="btn-close" @click="showPasswordModal = false">×</button>
+        </div>
+        <form class="password-form" @submit.prevent="handlePasswordSubmit">
+          <div class="form-group">
+            <label for="current-password">当前密码</label>
+            <input id="current-password" v-model="passwordForm.currentPassword" type="password" required placeholder="请输入当前密码" />
+          </div>
+          <div class="form-group">
+            <label for="new-password">新密码</label>
+            <input id="new-password" v-model="passwordForm.newPassword" type="password" required placeholder="请输入新密码（至少 6 位）" minlength="6" />
+          </div>
+          <div class="form-group">
+            <label for="confirm-password">确认新密码</label>
+            <input id="confirm-password" v-model="passwordForm.confirmPassword" type="password" required placeholder="请再次输入新密码" minlength="6" />
+          </div>
+          <p v-if="passwordError" class="form-error">{{ passwordError }}</p>
+          <div class="form-actions">
+            <button type="button" class="btn-cancel" @click="showPasswordModal = false">取消</button>
+            <button type="submit" class="btn-submit" :disabled="passwordSubmitting">提交</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 更新资料弹窗 -->
+    <div v-if="showProfileUpdate" class="modal-overlay" @click.self="showProfileUpdate = false">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3>更新资料</h3>
+          <button class="btn-close" @click="showProfileUpdate = false">×</button>
+        </div>
+        <form class="profile-form" @submit.prevent="handleProfileSubmit">
+          <div class="form-group">
+            <label>账户状态</label>
+            <select v-model="profileForm.status" class="form-control">
+              <option value="active">正常 (active)</option>
+              <option value="disabled">禁用 (disabled)</option>
+            </select>
+          </div>
+          <p v-if="profileError" class="form-error">{{ profileError }}</p>
+          <p v-if="profileSuccess" class="form-success">{{ profileSuccess }}</p>
+          <div class="form-actions">
+            <button type="button" class="btn-cancel" @click="showProfileUpdate = false">取消</button>
+            <button type="submit" class="btn-submit" :disabled="profileSubmitting">提交</button>
+          </div>
+        </form>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, nextTick, watch } from 'vue'
+import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChatMessageBubble from '@/components/ChatMessageBubble.vue'
 import AiAnswerCard from '@/components/AiAnswerCard.vue'
@@ -106,6 +179,7 @@ import DevicePicker from '@/components/DevicePicker.vue'
 import { sessionRepo, messageRepo, aiMetaRepo, ticketRepo, ticketLogRepo, deviceRepo, feedbackRepo } from '@/store/repositories'
 import { generateAIResponse, rewriteAttachmentUrlForDev } from '@/ai/ai_service'
 import { getArticleDetail } from '@/api/knowledge'
+import { getCurrentUser, changePassword as apiChangePassword, updateProfile as apiUpdateProfile } from '@/api/auth'
 import type { ChatMessage, Device, AIResponseMeta, RelatedArticle, TechnicalResource } from '@/models/types'
 
 /** 当前选中的「其他问题」详情（与首条「最有可能」并列展示用） */
@@ -133,6 +207,30 @@ const showDevicePicker = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
+const currentUser = ref<{ id: string; phone: string; createdAt: string } | null>(null)
+
+// 下拉菜单状态
+const isMenuOpen = ref(false)
+const menuContainerRef = ref<HTMLElement | null>(null)
+
+// 修改密码弹窗状态
+const showPasswordModal = ref(false)
+const passwordForm = ref({
+  currentPassword: '',
+  newPassword: '',
+  confirmPassword: ''
+})
+const passwordError = ref('')
+const passwordSubmitting = ref(false)
+
+// 更新资料弹窗状态
+const showProfileUpdate = ref(false)
+const profileForm = ref({
+  status: 'active'
+})
+const profileError = ref('')
+const profileSuccess = ref('')
+const profileSubmitting = ref(false)
 
 // 审计相关：后端返回的会话 ID（用于后续消息关联）
 const backendConversationId = ref<string | null>(null)
@@ -191,10 +289,31 @@ function getSelectedArticleDetail(messageId: string): SelectedArticleDetail | nu
 // 是否从欢迎页直接进入（未选设备，使用默认）
 const isDefaultDevice = ref(false)
 
+const toggleMenu = () => {
+  isMenuOpen.value = !isMenuOpen.value;
+};
+
+const closeMenuOnClickOutside = (event: MouseEvent) => {
+  if (menuContainerRef.value && !menuContainerRef.value.contains(event.target as Node)) {
+    isMenuOpen.value = false;
+  }
+};
+
 onMounted(async () => {
   // 检查是否已登录
   const token = localStorage.getItem('token')
   if (!token) {
+    router.push('/login')
+    return
+  }
+
+  // 获取当前用户信息
+  try {
+    const user = await getCurrentUser()
+    currentUser.value = user
+  } catch (error) {
+    console.error('获取用户信息失败:', error)
+    localStorage.removeItem('token')
     router.push('/login')
     return
   }
@@ -244,7 +363,12 @@ onMounted(async () => {
   } else {
     createNewSession()
   }
+  document.addEventListener('click', closeMenuOnClickOutside);
 })
+
+onUnmounted(() => {
+  document.removeEventListener('click', closeMenuOnClickOutside);
+});
 
 function createNewSession() {
   const newSession = sessionRepo.create({
@@ -514,6 +638,91 @@ function goToHistory() {
   })
 }
 
+function handleLogout() {
+  localStorage.removeItem('token')
+  currentUser.value = null
+  isMenuOpen.value = false // 关闭菜单
+  router.push('/login')
+}
+
+async function handlePasswordSubmit() {
+  passwordError.value = ''
+
+  if (passwordForm.value.newPassword !== passwordForm.value.confirmPassword) {
+    passwordError.value = '两次输入的新密码不一致'
+    return
+  }
+
+  if (passwordForm.value.newPassword.length < 6) {
+    passwordError.value = '新密码至少需要 6 个字符'
+    return
+  }
+
+  passwordSubmitting.value = true
+  try {
+    const result = await apiChangePassword({
+      phone: currentUser.value!.phone,
+      currentPassword: passwordForm.value.currentPassword,
+      newPassword: passwordForm.value.newPassword
+    })
+
+    if (result.success) {
+      showToast('密码修改成功')
+      showPasswordModal.value = false
+      passwordForm.value = {
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      }
+    } else {
+      passwordError.value = result.message || '修改密码失败'
+    }
+  } catch (error) {
+    console.error('修改密码失败:', error)
+    passwordError.value = '修改密码失败，请重试'
+  } finally {
+    passwordSubmitting.value = false
+  }
+}
+
+async function handleProfileSubmit() {
+  profileError.value = ''
+  profileSuccess.value = ''
+
+  profileSubmitting.value = true
+  try {
+    const result = await apiUpdateProfile({
+      status: profileForm.value.status
+    })
+
+    if (result.success) {
+      profileSuccess.value = '资料更新成功'
+      setTimeout(() => {
+        showProfileUpdate.value = false
+        profileSuccess.value = ''
+        profileForm.value.status = 'active'
+      }, 1500)
+    } else {
+      profileError.value = result.message || '更新资料失败'
+    }
+  } catch (error) {
+    console.error('更新资料失败:', error)
+    profileError.value = '更新资料失败，请重试'
+  } finally {
+    profileSubmitting.value = false
+  }
+}
+
+function handleChangePassword() {
+  showPasswordModal.value = true
+  passwordError.value = ''
+  passwordForm.value = {
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  }
+}
+
 // 显示提示消息（简单的 toast 实现）
 function showToast(message: string) {
   const toast = document.createElement('div')
@@ -554,6 +763,116 @@ watch(messages, () => {
   background: #fff;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
   z-index: 10;
+}
+
+.user-info {
+  margin-left: auto;
+}
+
+/* Dropdown Menu Styles */
+.user-menu-container {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.menu-trigger-btn {
+  background: none;
+  border: none;
+  padding: 6px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s;
+}
+
+.menu-trigger-btn:hover {
+  background-color: #f0f0f0;
+}
+
+.user-icon {
+  width: 22px;
+  height: 22px;
+  color: #333;
+}
+
+.dropdown-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  min-width: 160px;
+  z-index: 100;
+  padding: 8px 0;
+  border: 1px solid #ebeeef;
+}
+
+.dropdown-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 16px;
+  font-size: 14px;
+  color: #333;
+  background: none;
+  border: none;
+  cursor: default;
+}
+
+.user-phone-display {
+  font-weight: 500;
+  color: #000;
+}
+
+.logout-action {
+  cursor: pointer;
+  color: #f56c6c;
+}
+
+.logout-action:hover {
+  background-color: #fef0f0;
+}
+
+.dropdown-divider {
+  border: none;
+  border-top: 1px solid #ebeeef;
+  margin: 8px 0;
+}
+
+.btn-login {
+  padding: 6px 12px;
+  font-size: 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #18a058;
+  color: #fff;
+  text-decoration: none;
+}
+
+.btn-login:hover {
+  background: #159050;
+}
+
+/* Fade Transition */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
+  transform: translateY(-10px);
+}
+
+.btn-login:hover {
+  background: #159050;
 }
 
 .btn-back,
@@ -842,5 +1161,145 @@ watch(messages, () => {
 .toast-message.show {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
+}
+
+/* 模态框覆盖层 */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 2000;
+}
+
+.modal-container {
+  background: #fff;
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.2);
+}
+
+.modal-container .modal-header {
+  position: sticky;
+  top: 0;
+  background: #fff;
+  z-index: 1;
+  border-bottom: 1px solid #e0e0e0;
+  padding: 16px 20px;
+}
+
+/* 表单样式 */
+.password-form,
+.profile-form {
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group input[type="password"],
+.form-control {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.form-group input:focus,
+.form-control:focus {
+  border-color: #18a058;
+}
+
+.form-group input[type="password"]::placeholder {
+  color: #999;
+}
+
+.form-control {
+  cursor: pointer;
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 24px;
+}
+
+.btn-cancel,
+.btn-submit {
+  flex: 1;
+  padding: 10px 16px;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-cancel {
+  background: #f5f5f5;
+  color: #666;
+}
+
+.btn-cancel:hover {
+  background: #e8e8e8;
+}
+
+.btn-submit {
+  background: #18a058;
+  color: #fff;
+}
+
+.btn-submit:hover:not(:disabled) {
+  background: #159050;
+}
+
+.btn-submit:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.form-error {
+  color: #f56c6c;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.form-success {
+  color: #18a058;
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+/* 菜单项样式 */
+.menu-action {
+  cursor: pointer;
+  text-align: left;
+  color: #333;
+}
+
+.menu-action:hover {
+  background-color: #f5f5f5;
 }
 </style>

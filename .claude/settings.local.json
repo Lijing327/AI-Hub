@@ -2,7 +2,14 @@
   "permissions": {
     "allow": [
       "Bash(dotnet restore:*)",
-      "Bash(head:*)"
+      "Bash(head:*)",
+      "Bash(cd D:\\\\00-Project\\\\AI\\\\AI-Hub\\\\ai-hub-service:*)",
+      "Bash(taskkill:*)",
+      "Bash(tail:*)",
+      "Bash(cd \"D:\\\\00-Project\\\\AI\\\\AI-Hub\\\\ai-hub-service\" && dotnet run --no-build 2>&1)",
+      "Bash(netstat:*)",
+      "Bash(Get-Process:*)",
+      "Bash(fuser:*)"
     ]
   }
 }
