@@ -15,13 +15,13 @@ namespace AiHub.Utils
             _jwtSettings = jwtSettings;
         }
 
-        public string GenerateToken(string userId, string phone)
+        public string GenerateToken(string userId, string account)
         {
             var claims = new[]
             {
                 new Claim(ClaimTypes.NameIdentifier, userId),
-                new Claim(ClaimTypes.Name, phone),
-                new Claim(ClaimTypes.MobilePhone, phone)
+                new Claim(ClaimTypes.Name, account),
+                new Claim(ClaimTypes.MobilePhone, account)
             };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));

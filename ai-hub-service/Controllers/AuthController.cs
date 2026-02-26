@@ -75,7 +75,7 @@ namespace AiHub.Controllers
                 return Ok(new MeResponse
                 {
                     Id = user.Id,
-                    Phone = user.Phone,
+                    Account = user.Account,
                     CreatedAt = user.CreatedAt,
                     Status = user.Status
                 });

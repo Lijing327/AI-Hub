@@ -3,21 +3,20 @@
     <div class="login-container">
       <div class="login-header">
         <h1>登录</h1>
-        <p>请输入您的手机号和密码</p>
+        <p>请输入手机号/邮箱/用户名和密码</p>
       </div>
 
       <form @submit.prevent="handleLogin" class="login-form">
         <div class="form-group">
-          <label for="phone">手机号</label>
+          <label for="account">手机号/邮箱/用户名</label>
           <input
-            id="phone"
-            v-model="form.phone"
-            type="tel"
-            placeholder="请输入手机号"
-            maxlength="11"
-            :class="{ 'error': errors.phone }"
+            id="account"
+            v-model="form.account"
+            type="text"
+            placeholder="请输入手机号、邮箱或用户名"
+            :class="{ 'error': errors.account }"
           />
-          <span v-if="errors.phone" class="error-message">{{ errors.phone }}</span>
+          <span v-if="errors.account" class="error-message">{{ errors.account }}</span>
         </div>
 
         <div class="form-group">
@@ -59,33 +58,64 @@ const router = useRouter()
 const route = useRoute()
 
 const form = reactive({
-  phone: '',
+  account: '',
   password: ''
 })
 
 const errors = reactive({
-  phone: '',
+  account: '',
   password: ''
 })
 
 const errorMessage = ref('')
 const isLoading = ref(false)
 
+// 验证账号（手机号/邮箱/用户名）
+function validateAccount() {
+  if (!form.account) {
+    errors.account = '请输入手机号/邮箱/用户名'
+    return false
+  }
+
+  // 手机号验证（纯数字）
+  if (/^\d+$/.test(form.account)) {
+    if (!/^1[3-9]\d{9}$/.test(form.account)) {
+      errors.account = '请输入正确的手机号'
+      return false
+    }
+    return true
+  }
+
+  // 邮箱验证（包含@）
+  if (form.account.includes('@')) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(form.account)) {
+      errors.account = '请输入正确的邮箱'
+      return false
+    }
+    return true
+  }
+
+  // 用户名验证（允许 admin 等）
+  if (form.account.length < 2) {
+    errors.account = '用户名长度至少 2 位'
+    return false
+  }
+
+  return true
+}
+
 // 验证表单
 function validateForm() {
   let isValid = true
 
   // 清空错误
-  errors.phone = ''
+  errors.account = ''
   errors.password = ''
   errorMessage.value = ''
 
-  // 验证手机号
-  if (!form.phone) {
-    errors.phone = '请输入手机号'
-    isValid = false
-  } else if (!/^1[3-9]\d{9}$/.test(form.phone)) {
-    errors.phone = '请输入正确的手机号'
+  // 验证账号
+  if (!validateAccount()) {
     isValid = false
   }
 
@@ -94,7 +124,7 @@ function validateForm() {
     errors.password = '请输入密码'
     isValid = false
   } else if (form.password.length < 6) {
-    errors.password = '密码长度不能少于6位'
+    errors.password = '密码长度不能少于 6 位'
     isValid = false
   }
 
@@ -110,11 +140,11 @@ async function handleLogin() {
 
   try {
     const response = await authService.login({
-      phone: form.phone,
+      account: form.account,
       password: form.password
     })
 
-    // 保存token和用户信息
+    // 保存 token 和用户信息
     localStorage.setItem('token', response.token)
     localStorage.setItem('user', JSON.stringify(response.user))
 

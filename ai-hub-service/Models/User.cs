@@ -7,14 +7,18 @@ namespace AiHub.Models
         public string Id { get; set; } = string.Empty;
 
         [Required]
-        [StringLength(20, MinimumLength = 11)]
-        [Phone]
-        public string Phone { get; set; } = string.Empty;
+        [StringLength(100, MinimumLength = 2)]
+        public string Account { get; set; } = string.Empty;
 
         [Required]
         public string PasswordHash { get; set; } = string.Empty;
 
         public string Status { get; set; } = "active";
+
+        /// <summary>
+        /// 机器号（deviceMN），与 DeviceManager 表绑定，手机号注册时必填
+        /// </summary>
+        public string? DeviceMN { get; set; }
 
         public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 

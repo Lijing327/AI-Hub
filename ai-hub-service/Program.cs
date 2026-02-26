@@ -30,6 +30,7 @@ builder.Services.AddScoped<IAiAuditService, AiAuditService>();
 
 // 注册认证服务
 builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IDeviceManagerService, DeviceManagerService>();
 builder.Services.AddScoped<PasswordHasher>();
 
 // 配置JWT设置
@@ -206,26 +207,26 @@ using (var scope = app.Services.CreateScope())
         }
 
         // 创建测试用户（仅开发环境）
-        if (app.Environment.IsDevelopment())
-        {
-            var passwordHasher = services.GetRequiredService<PasswordHasher>();
-            var testPhone = "13800138000";
+        //if (app.Environment.IsDevelopment())
+        //{
+        //    var passwordHasher = services.GetRequiredService<PasswordHasher>();
+        //    var testPhone = "13800138000";
 
-            var existingUser = await context.Users.FirstOrDefaultAsync(u => u.Phone == testPhone);
-            if (existingUser == null)
-            {
-                var testUser = new AiHub.Models.User
-                {
-                    Id = Guid.NewGuid().ToString(),
-                    Phone = testPhone,
-                    PasswordHash = passwordHasher.HashPassword("123456"),
-                    Status = "active"
-                };
-                context.Users.Add(testUser);
-                await context.SaveChangesAsync();
-                logger.LogInformation("已创建测试用户：手机号={Phone}, 密码=123456", testPhone);
-            }
-        }
+        //    var existingUser = await context.Users.FirstOrDefaultAsync(u => u.Phone == testPhone);
+        //    if (existingUser == null)
+        //    {
+        //        var testUser = new AiHub.Models.User
+        //        {
+        //            Id = Guid.NewGuid().ToString(),
+        //            Phone = testPhone,
+        //            PasswordHash = passwordHasher.HashPassword("123456"),
+        //            Status = "active"
+        //        };
+        //        context.Users.Add(testUser);
+        //        await context.SaveChangesAsync();
+        //        logger.LogInformation("已创建测试用户：手机号={Phone}, 密码=123456", testPhone);
+        //    }
+        //}
     }
     catch (Exception ex)
     {

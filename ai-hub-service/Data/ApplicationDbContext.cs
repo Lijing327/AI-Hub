@@ -46,7 +46,7 @@ public class ApplicationDbContext : DbContext
     {
         base.OnModelCreating(modelBuilder);
 
-        // 配置KnowledgeArticle实体（kb_article）
+        // 配置 KnowledgeArticle 实体（kb_article）
         modelBuilder.Entity<KnowledgeArticle>(entity =>
         {
             entity.ToTable("kb_article");
@@ -75,7 +75,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => new { e.TenantId, e.Status });
         });
 
-        // 配置Asset实体（kb_asset）
+        // 配置 Asset 实体（kb_asset）
         modelBuilder.Entity<Asset>(entity =>
         {
             entity.ToTable("kb_asset");
@@ -104,7 +104,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.DeletedAt);
         });
 
-        // 配置KnowledgeChunk实体（kb_chunk）
+        // 配置 KnowledgeChunk 实体（kb_chunk）
         modelBuilder.Entity<KnowledgeChunk>(entity =>
         {
             entity.ToTable("kb_chunk");
@@ -131,7 +131,7 @@ public class ApplicationDbContext : DbContext
         });
 
         // ========== AI 审计表配置 ==========
-        
+
         // ai_conversation
         modelBuilder.Entity<AiConversation>(entity =>
         {
@@ -243,7 +243,7 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.IsSuccess);
         });
 
-        // 配置User实体
+        // 配置 User 实体
         modelBuilder.Entity<User>(entity =>
         {
             entity.ToTable("users");
@@ -252,14 +252,15 @@ public class ApplicationDbContext : DbContext
                   .HasColumnName("id")
                   .HasMaxLength(64)
                   .HasDefaultValueSql("NEWID()");
-            entity.Property(e => e.Phone).HasColumnName("phone").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Account).HasColumnName("account").HasMaxLength(100).IsRequired();
             entity.Property(e => e.PasswordHash).HasColumnName("password_hash").HasMaxLength(256).IsRequired();
             entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(16).IsRequired();
+            entity.Property(e => e.DeviceMN).HasColumnName("device_mn").HasMaxLength(50);
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").IsRequired();
 
             // 索引
-            entity.HasIndex(e => e.Phone).IsUnique();
+            entity.HasIndex(e => e.Account).IsUnique();
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.CreatedAt);
         });

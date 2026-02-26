@@ -2,12 +2,11 @@
   <div class="chat-page">
     <!-- 顶部栏 -->
     <div class="chat-header">
-      <button class="btn-back" @click="goBack" aria-label="返回">←</button>
+      <!-- <button class="btn-back" @click="goBack" aria-label="返回">←</button> -->
       <div class="device-info" @click="showDevicePicker = true">
         <div class="device-model">{{ isDefaultDevice ? '智能客服' : device?.model }}</div>
         <div class="device-serial">{{ isDefaultDevice ? '点击可切换设备' : `SN: ${device?.serialNo}` }}</div>
       </div>
-      <button class="btn-history" @click="goToHistory">历史</button>
       <!-- 用户信息区域 -->
       <div class="user-info">
         <div v-if="currentUser" ref="menuContainerRef" class="user-menu-container">
@@ -16,8 +15,9 @@
           </button>
           <transition name="fade">
             <div v-if="isMenuOpen" class="dropdown-menu">
-              <div class="dropdown-item user-phone-display">{{ currentUser.phone }}</div>
+              <div class="dropdown-item user-phone-display">{{ currentUser.account }}</div>
               <div class="dropdown-divider"></div>
+              <button @click="goToHistory" class="dropdown-item menu-action">历史记录</button>
               <button @click="handleChangePassword" class="dropdown-item menu-action">修改密码</button>
               <button @click="showProfileUpdate = true" class="dropdown-item menu-action">更新资料</button>
               <div class="dropdown-divider"></div>
@@ -207,7 +207,7 @@ const showDevicePicker = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
-const currentUser = ref<{ id: string; phone: string; createdAt: string } | null>(null)
+const currentUser = ref<{ id: string; account: string; createdAt: string } | null>(null)
 
 // 下拉菜单状态
 const isMenuOpen = ref(false)
@@ -661,7 +661,6 @@ async function handlePasswordSubmit() {
   passwordSubmitting.value = true
   try {
     const result = await apiChangePassword({
-      phone: currentUser.value!.phone,
       currentPassword: passwordForm.value.currentPassword,
       newPassword: passwordForm.value.newPassword
     })

@@ -42,13 +42,13 @@ api.interceptors.response.use(
 )
 
 // 登录接口
-export const login = async (data: { phone: string; password: string }) => {
+export const login = async (data: { account: string; password: string }) => {
   const response = await api.post('/api/auth/login', data)
   return response
 }
 
-// 注册接口
-export const register = async (data: { phone: string; password: string }) => {
+// 注册接口（手机号注册时 deviceMN 必填）
+export const register = async (data: { account: string; password: string; deviceMN?: string }) => {
   const response = await api.post('/api/auth/register', data)
   return response
 }
@@ -60,7 +60,7 @@ export const getCurrentUser = async () => {
 }
 
 // 修改密码
-export const changePassword = async (data: { phone: string; currentPassword: string; newPassword: string }) => {
+export const changePassword = async (data: { currentPassword: string; newPassword: string }) => {
   const response = await api.post('/api/auth/change-password', data)
   return response
 }

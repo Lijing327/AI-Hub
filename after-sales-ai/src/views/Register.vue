@@ -3,28 +3,40 @@
     <div class="register-container">
       <div class="register-header">
         <h1>注册</h1>
-        <p>创建您的账号，开始使用AI客服</p>
+        <p>创建您的账号，开始使用 AI 客服</p>
       </div>
 
       <form @submit.prevent="handleRegister" class="register-form">
         <div class="form-group">
-          <label for="phone">手机号</label>
+          <label for="account">手机号/邮箱/用户名</label>
           <input
-            id="phone"
-            v-model="form.phone"
-            type="tel"
-            placeholder="请输入手机号"
-            maxlength="11"
-            @input="checkPhoneAvailability"
-            :class="{ 'error': errors.phone }"
+            id="account"
+            v-model="form.account"
+            type="text"
+            placeholder="请输入手机号、邮箱或用户名"
+            @input="checkAccountAvailability"
+            :class="{ 'error': errors.account }"
           />
-          <span v-if="errors.phone" class="error-message">{{ errors.phone }}</span>
-          <span v-if="!errors.phone && form.phone && !phoneAvailable" class="checking-message">
+          <span v-if="errors.account" class="error-message">{{ errors.account }}</span>
+          <span v-if="!errors.account && form.account && !accountAvailable" class="checking-message">
             <span class="spinner">●</span> 检查中...
           </span>
-          <span v-if="!errors.phone && form.phone && phoneAvailable" class="success-message">
-            手机号可用
+          <span v-if="!errors.account && form.account && accountAvailable" class="success-message">
+            账号可用
           </span>
+        </div>
+
+        <div v-if="isPhoneAccount" class="form-group">
+          <label for="deviceMN">机器号</label>
+          <input
+            id="deviceMN"
+            v-model="form.deviceMN"
+            type="text"
+            placeholder="请输入设备机器号（如 354220030025）"
+            :class="{ 'error': errors.deviceMN }"
+          />
+          <span v-if="errors.deviceMN" class="error-message">{{ errors.deviceMN }}</span>
+          <span v-else class="form-hint">机器号需在设备管理表中存在方可注册</span>
         </div>
 
         <div class="form-group">
@@ -33,7 +45,7 @@
             id="password"
             v-model="form.password"
             type="password"
-            placeholder="请输入密码（至少6位）"
+            placeholder="请输入密码（至少 6 位）"
             :class="{ 'error': errors.password }"
           />
           <span v-if="errors.password" class="error-message">{{ errors.password }}</span>
@@ -77,49 +89,94 @@ import { authService } from '@/api/auth'
 const router = useRouter()
 
 const form = reactive({
-  phone: '',
+  account: '',
+  deviceMN: '',
   password: '',
   confirmPassword: ''
 })
 
 const errors = reactive({
-  phone: '',
+  account: '',
+  deviceMN: '',
   password: '',
   confirmPassword: ''
 })
 
+// 是否为手机号（手机号注册需填写机器号）
+const isPhoneAccount = computed(() => /^1[3-9]\d{9}$/.test(form.account))
+
 const errorMessage = ref('')
 const isLoading = ref(false)
-const phoneAvailable = ref(true)
-let phoneCheckingTimer: NodeJS.Timeout | null = null
+const accountAvailable = ref(true)
+let accountCheckingTimer: NodeJS.Timeout | null = null
 
-// 计算是否可以提交
+// 计算是否可以提交（手机号时需填写机器号）
 const canSubmit = computed(() => {
-  return form.phone &&
-         form.password &&
-         form.confirmPassword &&
-         !errors.phone &&
-         !errors.password &&
-         !errors.confirmPassword &&
-         phoneAvailable.value
+  const base = form.account && form.password && form.confirmPassword &&
+    !errors.account && !errors.password && !errors.confirmPassword && accountAvailable.value
+  if (isPhoneAccount.value) {
+    return base && form.deviceMN && !errors.deviceMN
+  }
+  return base
 })
+
+// 验证账号（手机号/邮箱/用户名）
+function validateAccount() {
+  if (!form.account) {
+    errors.account = '请输入手机号/邮箱/用户名'
+    return false
+  }
+
+  // 手机号验证（纯数字）
+  if (/^\d+$/.test(form.account)) {
+    if (!/^1[3-9]\d{9}$/.test(form.account)) {
+      errors.account = '请输入正确的手机号'
+      return false
+    }
+    return true
+  }
+
+  // 邮箱验证（包含@）
+  if (form.account.includes('@')) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+    if (!emailRegex.test(form.account)) {
+      errors.account = '请输入正确的邮箱'
+      return false
+    }
+    return true
+  }
+
+  // 用户名验证（允许 admin 等）
+  if (form.account.length < 2) {
+    errors.account = '用户名长度至少 2 位'
+    return false
+  }
+
+  return true
+}
 
 // 验证表单
 function validateForm() {
   let isValid = true
 
   // 清空错误
-  errors.phone = ''
+  errors.account = ''
+  errors.deviceMN = ''
   errors.password = ''
   errors.confirmPassword = ''
   errorMessage.value = ''
 
-  // 验证手机号
-  if (!form.phone) {
-    errors.phone = '请输入手机号'
+  // 验证账号
+  if (!validateAccount()) {
     isValid = false
-  } else if (!/^1[3-9]\d{9}$/.test(form.phone)) {
-    errors.phone = '请输入正确的手机号'
+  }
+
+  // 手机号注册时验证机器号
+  if (isPhoneAccount.value && !form.deviceMN?.trim()) {
+    errors.deviceMN = '手机号注册需填写机器号'
+    isValid = false
+  } else if (isPhoneAccount.value && form.deviceMN?.trim().length < 6) {
+    errors.deviceMN = '请输入正确的机器号'
     isValid = false
   }
 
@@ -128,7 +185,7 @@ function validateForm() {
     errors.password = '请输入密码'
     isValid = false
   } else if (form.password.length < 6) {
-    errors.password = '密码长度不能少于6位'
+    errors.password = '密码长度不能少于 6 位'
     isValid = false
   }
 
@@ -144,23 +201,23 @@ function validateForm() {
   return isValid
 }
 
-// 检查手机号是否可用（防抖处理）
-function checkPhoneAvailability() {
-  phoneAvailable.value = true
-  errors.phone = ''
+// 检查账号是否可用（防抖处理）
+function checkAccountAvailability() {
+  accountAvailable.value = true
+  errors.account = ''
 
-  if (phoneCheckingTimer) {
-    clearTimeout(phoneCheckingTimer)
+  if (accountCheckingTimer) {
+    clearTimeout(accountCheckingTimer)
   }
 
-  if (form.phone && /^1[3-9]\d{9}$/.test(form.phone)) {
-    phoneCheckingTimer = setTimeout(async () => {
+  if (form.account) {
+    accountCheckingTimer = setTimeout(async () => {
       try {
-        // 这里可以调用接口检查手机号是否已被注册
+        // 这里可以调用接口检查账号是否已被注册
         // 目前先设置为可用
-        phoneAvailable.value = true
+        accountAvailable.value = true
       } catch (error) {
-        errors.phone = '检查手机号失败'
+        errors.account = '检查账号失败'
       }
     }, 500)
   }
@@ -175,11 +232,12 @@ async function handleRegister() {
 
   try {
     const response = await authService.register({
-      phone: form.phone,
-      password: form.password
+      account: form.account,
+      password: form.password,
+      deviceMN: isPhoneAccount.value ? form.deviceMN?.trim() : undefined
     })
 
-    // 保存token和用户信息
+    // 保存 token 和用户信息
     localStorage.setItem('token', response.token)
     localStorage.setItem('user', JSON.stringify(response.user))
 
@@ -285,6 +343,11 @@ async function handleRegister() {
 .success-message {
   font-size: 12px;
   color: #48bb78;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #718096;
 }
 
 .form-error {

@@ -16,8 +16,8 @@ namespace AiHub.DTOs
         [JsonPropertyName("id")]
         public string Id { get; set; } = string.Empty;
 
-        [JsonPropertyName("phone")]
-        public string Phone { get; set; } = string.Empty;
+        [JsonPropertyName("account")]
+        public string Account { get; set; } = string.Empty;
 
         [JsonPropertyName("created_at")]
         public DateTime CreatedAt { get; set; }
@@ -28,8 +28,8 @@ namespace AiHub.DTOs
         [JsonPropertyName("id")]
         public string Id { get; set; } = string.Empty;
 
-        [JsonPropertyName("phone")]
-        public string Phone { get; set; } = string.Empty;
+        [JsonPropertyName("account")]
+        public string Account { get; set; } = string.Empty;
 
         [JsonPropertyName("created_at")]
         public DateTime CreatedAt { get; set; }
