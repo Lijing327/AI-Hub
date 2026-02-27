@@ -13,6 +13,9 @@ public class ApplicationDbContext : DbContext
     public ApplicationDbContext(DbContextOptions<ApplicationDbContext> options)
         : base(options)
     {
+        var dbConnection = this.Database.GetDbConnection();
+        Console.WriteLine($"[ApplicationDbContext] 构造函数被调用");
+        Console.WriteLine($"[ApplicationDbContext] 数据库连接: {dbConnection.ConnectionString}");
     }
 
     /// <summary>

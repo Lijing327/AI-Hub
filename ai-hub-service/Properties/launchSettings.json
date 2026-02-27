@@ -5,7 +5,8 @@
       "launchBrowser": true,
       "launchUrl": "swagger",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
+        // 注释掉，让 Program.cs 中的 IS_TEST 开关生效
+        // "ASPNETCORE_ENVIRONMENT": "Development"
       },
       "applicationUrl": "http://localhost:5000"
     }

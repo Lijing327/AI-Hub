@@ -12,22 +12,40 @@ using Microsoft.Extensions.FileProviders;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// 环境开关：true=测试环境(ai_hub_test), false=生产环境(ai_hub)
+const bool IS_TEST = true;
+
+// 测试环境默认租户为 default_test（与 ai-hub-ai .env.test 一致，kb_article 数据多为该租户）
+if (IS_TEST)
+{
+    builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
+    {
+        ["Tenant:DefaultTenant"] = "default_test"
+    });
+}
+
+Console.WriteLine($"============================================================");
+Console.WriteLine($"============================================================");
+Console.WriteLine($"AI-Hub .NET 服务启动 | 当前环境: {(IS_TEST ? "Test" : "Production")}");
+Console.WriteLine($"使用数据库: {(IS_TEST ? "ai_hub_test" : "ai_hub")}");
+Console.WriteLine($"============================================================");
+
 // 添加服务
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// 配置数据库连接
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
-builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseSqlServer(connectionString));
+// 配置数据库连接：根据 IS_TEST 开关强制使用对应数据库
+var connectionString = IS_TEST
+    ? "Server=172.16.15.9;Database=ai_hub_test;User Id=sa;Password=pQdr2f@K3.Stp6Qs3hkP;TrustServerCertificate=true;"
+    : "Server=172.16.15.9;Database=ai_hub;User Id=sa;Password=pQdr2f@K3.Stp6Qs3hkP;TrustServerCertificate=true;";
 
-// 注册服务
-builder.Services.AddScoped<IKnowledgeArticleService, KnowledgeArticleService>();
-builder.Services.AddScoped<IAssetService, AssetService>();
-builder.Services.AddScoped<IIndexService, IndexService>();
-builder.Services.AddScoped<IAiAuditService, AiAuditService>();
-builder.Services.AddScoped<ITicketService, TicketService>();
+Console.WriteLine($"[DEBUG] 连接字符串: {connectionString}");
+
+builder.Services.AddDbContext<ApplicationDbContext>(options =>
+    options.UseSqlServer(connectionString)
+           .EnableSensitiveDataLogging()  // 启用敏感数据日志
+           .LogTo(Console.WriteLine, LogLevel.Information));  // 输出所有 SQL 查询到控制台
 
 // 注册 HTTP 客户端工厂（用于调用 ai-hub-ai 服务）
 builder.Services.AddHttpClient();
@@ -36,6 +54,12 @@ builder.Services.AddHttpClient();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IDeviceManagerService, DeviceManagerService>();
 builder.Services.AddScoped<PasswordHasher>();
+
+// 注册知识库相关服务
+builder.Services.AddScoped<IIndexService, IndexService>();
+builder.Services.AddScoped<IKnowledgeArticleService, KnowledgeArticleService>();
+builder.Services.AddScoped<IAssetService, AssetService>();
+builder.Services.AddScoped<ITicketService, TicketService>();
 
 // 配置JWT设置
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();
@@ -61,7 +85,7 @@ builder.Services.AddAuthentication("Bearer")
     });
 
 // 配置CORS
-var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>() 
+var allowedOrigins = builder.Configuration.GetSection("CORS:AllowedOrigins").Get<string[]>()
     ?? new[] { "http://localhost:5173", "http://localhost:3000" };
 
 builder.Services.AddCors(options =>
@@ -76,7 +100,7 @@ builder.Services.AddCors(options =>
 });
 
 // 配置Kestrel服务器端口（仅在开发环境或未配置反向代理时使用）
-if (builder.Environment.IsDevelopment())
+if (!IS_TEST)
 {
     builder.WebHost.UseUrls("http://localhost:5000");
 }
@@ -85,26 +109,15 @@ var app = builder.Build();
 
 // 配置HTTP请求管道
 // 添加异常处理中间件（必须在最前面）
-if (app.Environment.IsDevelopment())
-{
-    app.UseDeveloperExceptionPage();
-}
-else
-{
-    app.UseExceptionHandler("/Error");
-}
+app.UseDeveloperExceptionPage();
 
-// 启用Swagger（生产环境建议禁用或限制访问）
-var enableSwagger = app.Configuration.GetValue<bool>("EnableSwagger", false);
-if (app.Environment.IsDevelopment() || enableSwagger)
-{
-    app.UseSwagger();
-    app.UseSwaggerUI(c =>
+// 启用Swagger（测试环境也启用）
+app.UseSwagger();
+app.UseSwaggerUI(c =>
     {
         c.SwaggerEndpoint("/swagger/v1/swagger.json", "知识库录入与管理系统 API V1");
         c.RoutePrefix = "swagger"; // Swagger UI 在 /swagger 路径下
     });
-}
 
 app.UseCors("AllowVueApp");
 
@@ -140,10 +153,10 @@ if (!string.IsNullOrEmpty(attachmentBasePath) && Directory.Exists(attachmentBase
             ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
             ctx.Context.Response.Headers.Append("Access-Control-Allow-Methods", "GET, OPTIONS");
             ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
-            
+
             // 设置缓存策略
             var fileName = ctx.File.Name.ToLower();
-            if (fileName.EndsWith(".jpg") || fileName.EndsWith(".jpeg") || 
+            if (fileName.EndsWith(".jpg") || fileName.EndsWith(".jpeg") ||
                 fileName.EndsWith(".png") || fileName.EndsWith(".gif") ||
                 fileName.EndsWith(".webp") || fileName.EndsWith(".mp4") ||
                 fileName.EndsWith(".avi") || fileName.EndsWith(".mov") ||
@@ -167,14 +180,14 @@ app.UseStaticFiles(new StaticFileOptions
         ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
         ctx.Context.Response.Headers.Append("Access-Control-Allow-Methods", "GET, OPTIONS");
         ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
-        
+
         // 设置缓存策略
         var fileName = ctx.File.Name.ToLower();
-        if (fileName.EndsWith(".jpg") || fileName.EndsWith(".jpeg") || 
-            fileName.EndsWith(".png") || fileName.EndsWith(".gif") ||
-            fileName.EndsWith(".webp") || fileName.EndsWith(".mp4") ||
-            fileName.EndsWith(".avi") || fileName.EndsWith(".mov") ||
-            fileName.EndsWith(".wmv"))
+        if (fileName.EndsWith(".jpg") || fileName.EndsWith(".jpeg") ||
+                fileName.EndsWith(".png") || fileName.EndsWith(".gif") ||
+                fileName.EndsWith(".webp") || fileName.EndsWith(".mp4") ||
+                fileName.EndsWith(".avi") || fileName.EndsWith(".mov") ||
+                fileName.EndsWith(".wmv"))
         {
             ctx.Context.Response.Headers.Append("Cache-Control", "public, max-age=31536000");
         }
@@ -209,28 +222,6 @@ using (var scope = app.Services.CreateScope())
         {
             logger.LogInformation("数据库已是最新状态");
         }
-
-        // 创建测试用户（仅开发环境）
-        //if (app.Environment.IsDevelopment())
-        //{
-        //    var passwordHasher = services.GetRequiredService<PasswordHasher>();
-        //    var testPhone = "13800138000";
-
-        //    var existingUser = await context.Users.FirstOrDefaultAsync(u => u.Phone == testPhone);
-        //    if (existingUser == null)
-        //    {
-        //        var testUser = new AiHub.Models.User
-        //        {
-        //            Id = Guid.NewGuid().ToString(),
-        //            Phone = testPhone,
-        //            PasswordHash = passwordHasher.HashPassword("123456"),
-        //            Status = "active"
-        //        };
-        //        context.Users.Add(testUser);
-        //        await context.SaveChangesAsync();
-        //        logger.LogInformation("已创建测试用户：手机号={Phone}, 密码=123456", testPhone);
-        //    }
-        //}
     }
     catch (Exception ex)
     {

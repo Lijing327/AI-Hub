@@ -1,17 +1,42 @@
 """
 应用配置
-一键切换：改下面 USE_PRODUCTION 即可换用 .env 或 .env.production。
+环境切换方式：
+1. 【推荐】修改下面的 IS_TEST 变量：True=测试环境，False=生产环境
+2. 通过 APP_ENV 环境变量：test/production/development
 """
 from pathlib import Path
+import os
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-# 一键切换：True = 用 .env.production，False = 用 .env
-USE_PRODUCTION = True
+# =====================================================
+# 【环境切换开关】修改这里来切换环境
+# =====================================================
+# True = 测试环境（使用 .env.test）
+# False = 生产环境（使用 .env.production）
+IS_TEST = True
+# =====================================================
 
 # 项目根目录：app/core/config.py -> app -> 项目根
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-_ENV_FILE = str(_PROJECT_ROOT / (".env.production" if USE_PRODUCTION else ".env"))
+
+# 环境切换逻辑
+APP_ENV = os.getenv("APP_ENV", "").lower()
+
+if APP_ENV == "test":
+    _ENV_FILE = str(_PROJECT_ROOT / ".env.test")
+elif APP_ENV == "production":
+    _ENV_FILE = str(_PROJECT_ROOT / ".env.production")
+elif APP_ENV == "development":
+    _ENV_FILE = str(_PROJECT_ROOT / ".env")
+else:
+    # 使用代码开关：IS_TEST 优先
+    if IS_TEST:
+        _ENV_FILE = str(_PROJECT_ROOT / ".env.test")
+        APP_ENV = "test"
+    else:
+        _ENV_FILE = str(_PROJECT_ROOT / ".env.production")
+        APP_ENV = "production"
 
 
 class Settings(BaseSettings):
@@ -75,6 +100,12 @@ class Settings(BaseSettings):
     # 审计日志（调用 .NET internal API 记录对话全链路）
     ENABLE_AUDIT_LOG: bool = True
 
+    # 服务端口（与 main.py 中 uvicorn 的 port 一致，用于启动时打开 Swagger）
+    PORT: int = 8000
+
+    # 启动时自动打开 Swagger（测试/开发环境建议 true，生产可设 false）
+    OPEN_SWAGGER_ON_STARTUP: bool = True
+
     # JWT 认证（与 .NET 后端保持一致）
     JWT_SECRET: str = "your-super-secret-jwt-key-123456789"
     JWT_ISSUER: str = "ai-hub"
@@ -83,8 +114,8 @@ class Settings(BaseSettings):
 
 settings = Settings()
 
-# 开发环境：附件地址走前端 dev 代理（localhost:3000），由 Vite 转发到 .NET 5000，避免直连 5000 导致地址/跨域不对
-if not USE_PRODUCTION and getattr(settings, "ATTACHMENT_BASE_URL", None):
+# 开发/测试环境：附件地址走前端 dev 代理（localhost:3000），由 Vite 转发到 .NET 5000，避免直连 5000 导致地址/跨域不对
+if APP_ENV != "production" and getattr(settings, "ATTACHMENT_BASE_URL", None):
     base = settings.ATTACHMENT_BASE_URL
     if base and ("localhost:5000" in base or "127.0.0.1:5000" in base):
         settings.ATTACHMENT_BASE_URL = base.replace("localhost:5000", "localhost:3000").replace("127.0.0.1:5000", "127.0.0.1:3000")

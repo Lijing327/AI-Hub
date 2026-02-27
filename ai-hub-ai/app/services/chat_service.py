@@ -11,7 +11,7 @@ from urllib.parse import quote
 import httpx
 from fastapi import HTTPException
 
-from app.core.config import settings, USE_PRODUCTION
+from app.core.config import settings, APP_ENV
 from app.core.logging_config import get_logger
 from app.clients.dotnet_client import DotnetClient
 from app.clients.deepseek_client import DeepSeekClient
@@ -376,10 +376,10 @@ def _assets_to_resource_items(assets: List[Dict[str, Any]]) -> List[ResourceItem
     out: List[ResourceItem] = []
     for a in assets:
         file_name = (a.get("name") or "").strip() or (a.get("file_name") or "").strip()
-        if USE_PRODUCTION:
-            url = _build_attachment_url_production(file_name) if file_name else ""
-        else:
+        if APP_ENV != "production":  # 测试/开发环境
             url = _build_attachment_url(file_name) if file_name else ""
+        else:  # 生产环境
+            url = _build_attachment_url_production(file_name) if file_name else ""
         out.append(
             ResourceItem(
                 id=int(a.get("id") or 0),

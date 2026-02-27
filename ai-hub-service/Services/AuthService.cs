@@ -160,26 +160,47 @@ namespace AiHub.Services
 
     public async Task<AuthResponse> LoginAsync(LoginRequest request)
         {
+            Console.WriteLine($"[AuthService.Login] 开始登录流程，账号: {request.Account}");
+
             // 验证账号格式
             if (!IsValidAccount(request.Account, out var error))
             {
+                Console.WriteLine($"[AuthService.Login] 账号格式验证失败: {error}");
                 throw new InvalidOperationException(error);
             }
 
             // 标准化账号
             var normalizedAccount = NormalizeAccount(request.Account);
+            Console.WriteLine($"[AuthService.Login] 标准化后的账号: {normalizedAccount}");
 
             // 查询用户（支持手机号、邮箱、用户名登录）
+            Console.WriteLine($"[AuthService.Login] 开始查询数据库...");
             var user = await _context.Users
                 .FirstOrDefaultAsync(u => u.Account == normalizedAccount && u.Status == "active");
 
+            Console.WriteLine($"[AuthService.Login] 查询结果: user={(user != null ? "found" : "not found")}");
+
+            if (user != null)
+            {
+                Console.WriteLine($"[AuthService.Login] 找到用户 - Id={user.Id}, Account={user.Account}, Role={user.Role}, Status={user.Status}");
+            }
+            else
+            {
+                Console.WriteLine($"[AuthService.Login] 未找到用户或用户状态非 active");
+            }
+
             if (user == null || !_passwordHasher.VerifyPassword(request.Password, user.PasswordHash))
             {
+                Console.WriteLine($"[AuthService.Login] 登录失败 - 账号或密码错误");
                 throw new UnauthorizedAccessException("账号或密码错误");
             }
 
+            Console.WriteLine($"[AuthService.Login] 密码验证成功，正在生成 JWT token...");
+
             // 生成 JWT token（含 role，工程师/管理员可访问 admin API）
             var token = _jwtUtils.GenerateToken(user.Id, user.Account, user.Role);
+
+            Console.WriteLine($"[AuthService.Login] 登录成功，token 已生成");
 
             return new AuthResponse
             {

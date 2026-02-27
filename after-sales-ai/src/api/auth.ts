@@ -33,10 +33,10 @@ api.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === 401) {
-      // Token过期或无效，清除本地存储并跳转到登录页
+      // Token过期或无效，清除本地存储并跳转到登录页（使用 hash 以兼容 base path /cs/）
       localStorage.removeItem('token')
       localStorage.removeItem('user')
-      window.location.href = '/login'
+      window.location.hash = '#/login'
     }
     return Promise.reject(error)
   }

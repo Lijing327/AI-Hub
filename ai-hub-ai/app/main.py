@@ -4,11 +4,15 @@
 - 加载配置、初始化日志
 - 注册路由、中间件、全局异常处理
 """
+import asyncio
+import os
+import webbrowser
+
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.core.config import settings
+from app.core.config import settings, APP_ENV
 from app.core.logging import setup_logging
 from app.core.logging_config import setup_logging as setup_logging_old, get_logger
 from app.core.exceptions import AppException
@@ -65,6 +69,22 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def startup():
+        # 显示当前环境
+        env = APP_ENV or "default"
+        logger.info("============================================================")
+        logger.info("AI-Hub 服务启动 | 当前环境: %s", env)
+        logger.info("============================================================")
+
+        # 显示数据库和向量库配置
+        db_info = settings.SQLSERVER_DSN
+        if "Database=" in db_info:
+            db_name = db_info.split("Database=")[1].split(";")[0]
+            logger.info("数据库: %s", db_name)
+        else:
+            logger.info("数据库: (无法解析)")
+
+        logger.info("向量库: %s (collection: %s)", settings.CHROMA_PERSIST_DIR, settings.CHROMA_COLLECTION)
+
         # 对话 LLM：百炼兼容 或 DeepSeek 直连
         chat_client = DeepSeekClient()
         if chat_client.is_available:
@@ -92,6 +112,22 @@ def create_app() -> FastAPI:
             settings.ATTACHMENT_BASE_URL or "(未配置)",
             settings.ATTACHMENT_FILES_API_BASE_URL or "(未配置)",
         )
+        logger.info("============================================================")
+
+        # 启动时自动打开 Swagger（可通过 OPEN_SWAGGER_ON_STARTUP=false 关闭）
+        if getattr(settings, "OPEN_SWAGGER_ON_STARTUP", True):
+            port = int(os.getenv("PORT", str(getattr(settings, "PORT", 8000))))
+            swagger_url = f"http://127.0.0.1:{port}/docs"
+
+            async def _open_swagger():
+                await asyncio.sleep(1)
+                try:
+                    webbrowser.open(swagger_url)
+                    logger.info("已自动打开 Swagger: %s", swagger_url)
+                except Exception as e:
+                    logger.warning("自动打开 Swagger 失败: %s，请手动访问 %s", e, swagger_url)
+
+            asyncio.create_task(_open_swagger())
 
     return app
 
