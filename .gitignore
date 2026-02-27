@@ -101,12 +101,14 @@ wwwroot/uploads/*
 .env
 .env.local
 .env.*.local
+.env.test
 .env.production
 appsettings.Production.json
 
 # 保留示例文件
 !.env.example
 !.env.production.example
+!.env.test.example
 !appsettings.Production.example.json
 
 # OS
