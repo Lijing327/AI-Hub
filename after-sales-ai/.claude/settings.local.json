@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npm run --silent build)"
+      "Bash(npm run --silent build)",
+      "Bash(dotnet build --no-incremental)",
+      "Bash(dotnet build)"
     ]
   }
 }

@@ -23,6 +23,7 @@
       </div>
 
       <div class="action-section">
+        <button class="btn-ticket" @click="goToTickets">工单管理</button>
         <JsonExportButton />
         <button class="btn-clear" @click="handleClearData">清空演示数据</button>
       </div>
@@ -95,6 +96,10 @@ function showToast(message: string) {
 function goBack() {
   router.push('/')
 }
+
+function goToTickets() {
+  router.push('/admin/tickets')
+}
 </script>
 
 <style scoped>
@@ -162,6 +167,24 @@ function goBack() {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+.btn-ticket {
+  padding: 14px;
+  background: #1890ff;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  font-size: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s;
+}
+
+.btn-ticket:hover {
+  background: #40a9ff;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(24, 144, 255, 0.3);
 }
 
 .btn-clear {

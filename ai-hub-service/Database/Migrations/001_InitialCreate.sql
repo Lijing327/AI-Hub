@@ -51,8 +51,8 @@ BEGIN
         file_url NVARCHAR(1000) NOT NULL, -- 文件访问URL
         file_type NVARCHAR(50) NOT NULL, -- 文件类型（image/video/pdf等）
         file_size BIGINT, -- 文件大小（字节）
-        created_at DATETIME NOT NULL DEFAULT GETDATE(), -- 创建时间
-        FOREIGN KEY (knowledge_item_id) REFERENCES kb_item(id) ON DELETE CASCADE
+        created_at DATETIME NOT NULL DEFAULT GETDATE() -- 创建时间
+        -- 不添加外键，减少约束
     );
 
     -- 创建索引
@@ -68,8 +68,8 @@ BEGIN
         knowledge_item_id INT NOT NULL, -- 关联的知识条目ID
         chunk_text NVARCHAR(MAX) NOT NULL, -- 块文本内容
         chunk_index INT NOT NULL, -- 块索引（同一知识条目中的顺序）
-        created_at DATETIME NOT NULL DEFAULT GETDATE(), -- 创建时间
-        FOREIGN KEY (knowledge_item_id) REFERENCES kb_item(id) ON DELETE CASCADE
+        created_at DATETIME NOT NULL DEFAULT GETDATE() -- 创建时间
+        -- 不添加外键，减少约束
     );
 
     -- 创建索引

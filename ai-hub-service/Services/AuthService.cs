@@ -143,8 +143,8 @@ namespace AiHub.Services
             _context.Users.Add(user);
             await _context.SaveChangesAsync();
 
-            // 生成 JWT token
-            var token = _jwtUtils.GenerateToken(user.Id, user.Account);
+            // 生成 JWT token（含 role，工程师/管理员可访问 admin API）
+            var token = _jwtUtils.GenerateToken(user.Id, user.Account, user.Role);
 
             return new AuthResponse
             {
@@ -158,7 +158,7 @@ namespace AiHub.Services
             };
         }
 
-        public async Task<AuthResponse> LoginAsync(LoginRequest request)
+    public async Task<AuthResponse> LoginAsync(LoginRequest request)
         {
             // 验证账号格式
             if (!IsValidAccount(request.Account, out var error))
@@ -178,8 +178,8 @@ namespace AiHub.Services
                 throw new UnauthorizedAccessException("账号或密码错误");
             }
 
-            // 生成 JWT token
-            var token = _jwtUtils.GenerateToken(user.Id, user.Account);
+            // 生成 JWT token（含 role，工程师/管理员可访问 admin API）
+            var token = _jwtUtils.GenerateToken(user.Id, user.Account, user.Role);
 
             return new AuthResponse
             {
@@ -193,7 +193,7 @@ namespace AiHub.Services
             };
         }
 
-        public async Task<User?> GetUserByIdAsync(string userId)
+    public async Task<User?> GetUserByIdAsync(string userId)
         {
             return await _context.Users.FindAsync(userId);
         }

@@ -18,6 +18,7 @@
               <div class="dropdown-item user-phone-display">{{ currentUser.account }}</div>
               <div class="dropdown-divider"></div>
               <button @click="goToHistory" class="dropdown-item menu-action">历史记录</button>
+              <button @click="goToTickets" class="dropdown-item menu-action">我的工单</button>
               <button @click="handleChangePassword" class="dropdown-item menu-action">修改密码</button>
               <button @click="showProfileUpdate = true" class="dropdown-item menu-action">更新资料</button>
               <div class="dropdown-divider"></div>
@@ -176,7 +177,8 @@ import ChatMessageBubble from '@/components/ChatMessageBubble.vue'
 import AiAnswerCard from '@/components/AiAnswerCard.vue'
 // import QuickQuestions from '@/components/QuickQuestions.vue' // 已移除快捷问题显示
 import DevicePicker from '@/components/DevicePicker.vue'
-import { sessionRepo, messageRepo, aiMetaRepo, ticketRepo, ticketLogRepo, deviceRepo, feedbackRepo } from '@/store/repositories'
+import { sessionRepo, messageRepo, aiMetaRepo, deviceRepo, feedbackRepo } from '@/store/repositories'
+import { createTicket } from '@/api/tickets'
 import { generateAIResponse, rewriteAttachmentUrlForDev } from '@/ai/ai_service'
 import { getArticleDetail } from '@/api/knowledge'
 import { getCurrentUser, changePassword as apiChangePassword, updateProfile as apiUpdateProfile } from '@/api/auth'
@@ -234,6 +236,8 @@ const profileSubmitting = ref(false)
 
 // 审计相关：后端返回的会话 ID（用于后续消息关联）
 const backendConversationId = ref<string | null>(null)
+// 本地 messageId -> 后端 messageId 映射（用于创建工单时传 triggerMessageId）
+const backendMessageIdByLocal = ref<Record<string, string>>({})
 
 // 点击「其他问题」时按需拉取的详情，key = messageId
 const selectedArticleDetailsByMessageId = ref<Record<string, SelectedArticleDetail | null>>({})
@@ -457,6 +461,9 @@ async function sendMessage() {
       createdAt: new Date().toISOString()
     })
     messages.value.push(aiMessage)
+    if (aiResponse.messageId) {
+      backendMessageIdByLocal.value[aiMessage.messageId] = aiResponse.messageId
+    }
 
     // 转换相关文章格式
     const relatedArticles: RelatedArticle[] | undefined = aiResponse.relatedArticles?.map(article => ({
@@ -517,40 +524,46 @@ async function sendMessage() {
 // }
 // 已移除快捷问题功能
 
-function handleCreateTicket(_messageId: string) {
-  if (!device.value || !currentSessionId.value) return
+async function handleCreateTicket(messageId: string) {
+  if (!device.value) return
 
-  const aiMeta = getAIMeta(_messageId)
+  const aiMeta = getAIMeta(messageId)
   if (!aiMeta) return
 
-  // 创建工单
-  const ticket = ticketRepo.create({
-    customerId: currentCustomerId.value,
-    deviceId: currentDeviceId.value,
-    sessionId: currentSessionId.value,
-    title: `工单：${aiMeta.issueCategory}${aiMeta.alarmCode ? ' - ' + aiMeta.alarmCode : ''}`,
-    description: `问题描述：${messages.value.find(m => m.messageId === _messageId)?.content || ''}`,
-    status: '待处理',
-    priority: '中',
-    createdAt: new Date().toISOString()
-  })
+  const assistantMsg = messages.value.find((m) => m.messageId === messageId)
+  const assistantIdx = assistantMsg ? messages.value.indexOf(assistantMsg) : -1
+  const userMsg = assistantIdx > 0 ? messages.value[assistantIdx - 1] : null
+  const userContent = userMsg?.role === 'user' ? userMsg.content : ''
+  const triggerMessageId = backendMessageIdByLocal.value[messageId]
 
-  // 创建工单日志
-  ticketLogRepo.create({
-    ticketId: ticket.ticketId,
-    action: '创建工单',
-    content: '用户通过 AI 客服生成工单',
-    operator: '系统',
-    createdAt: new Date().toISOString()
-  })
+  const title = `工单：${aiMeta.issueCategory}${aiMeta.alarmCode ? ' - ' + aiMeta.alarmCode : ''}`
+  const description = userContent ? `问题描述：${userContent}` : undefined
 
-  // 更新会话
-  sessionRepo.update(currentSessionId.value, {
-    escalatedToTicket: true
-  })
+  try {
+    const ticket = await createTicket({
+      title,
+      description,
+      deviceId: device.value.deviceId,
+      deviceMn: device.value.serialNo,
+      customerId: currentCustomerId.value || undefined,
+      sessionId: backendConversationId.value || undefined,
+      triggerMessageId: triggerMessageId || undefined,
+      source: 'ai_chat',
+      meta: {
+        issueCategory: aiMeta.issueCategory,
+        alarmCode: aiMeta.alarmCode,
+        citedDocs: aiMeta.citedDocs?.map((d) => d.title)
+      }
+    })
 
-  // 跳转到工单详情
-  router.push(`/ticket/${ticket.ticketId}`)
+    sessionRepo.update(currentSessionId.value, { escalatedToTicket: true })
+    router.push(`/ticket/${ticket.ticketId}`)
+    showToast('工单创建成功')
+  } catch (err: unknown) {
+    console.error('创建工单失败:', err)
+    const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '创建工单失败'
+    showToast(msg)
+  }
 }
 
 function handleFeedback(_messageId: string, isResolved: boolean) {
@@ -632,6 +645,10 @@ function goToHistory() {
     path: '/history',
     query: { deviceId: currentDeviceId.value }
   })
+}
+
+function goToTickets() {
+  router.push('/tickets')
 }
 
 function handleLogout() {

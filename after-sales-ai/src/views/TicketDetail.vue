@@ -6,38 +6,42 @@
       <div></div>
     </div>
 
-    <div class="ticket-content">
+    <div class="ticket-content" v-if="ticket">
       <div class="ticket-card">
         <div class="card-header">
-          <div class="ticket-title">{{ ticket?.title }}</div>
-          <TicketStatusTag :status="ticket?.status || '待处理'" />
+          <div class="ticket-title">{{ ticket.title }}</div>
+          <TicketStatusTag :status="statusToCn(ticket.status)" />
         </div>
         <div class="card-body">
           <div class="info-section">
             <div class="info-item">
-              <span class="label">设备：</span>
-              <span class="value">{{ getDeviceModel(ticket?.deviceId || '') }}</span>
+              <span class="label">工单号：</span>
+              <span class="value">{{ ticket.ticketNo }}</span>
             </div>
             <div class="info-item">
               <span class="label">优先级：</span>
-              <span class="value priority" :class="ticket?.priority">{{ ticket?.priority }}</span>
+              <span class="value priority" :class="'p-' + ticket.priority">{{ priorityToCn(ticket.priority) }}</span>
+            </div>
+            <div class="info-item">
+              <span class="label">设备：</span>
+              <span class="value">{{ ticket.deviceMn || '未知' }}</span>
             </div>
             <div class="info-item">
               <span class="label">创建时间：</span>
-              <span class="value">{{ formatTime(ticket?.createdAt || '') }}</span>
+              <span class="value">{{ formatTime(ticket.createdAt) }}</span>
             </div>
-            <div class="info-item" v-if="ticket?.assignee">
+            <div class="info-item" v-if="ticket.assigneeName">
               <span class="label">处理人：</span>
-              <span class="value">{{ ticket.assignee }}</span>
+              <span class="value">{{ ticket.assigneeName }}</span>
             </div>
           </div>
 
           <div class="description-section">
             <div class="section-title">问题描述</div>
-            <div class="description-text">{{ ticket?.description }}</div>
+            <div class="description-text">{{ ticket.description || '无' }}</div>
           </div>
 
-          <div class="solution-section" v-if="ticket?.finalSolutionSummary">
+          <div class="solution-section" v-if="ticket.finalSolutionSummary">
             <div class="section-title">解决方案</div>
             <div class="solution-text">{{ ticket.finalSolutionSummary }}</div>
           </div>
@@ -50,20 +54,25 @@
         <div class="logs-list">
           <div v-for="log in logs" :key="log.logId" class="log-item">
             <div class="log-header">
-              <span class="log-action">{{ log.action }}</span>
+              <span class="log-action">{{ getActionText(log.action) }}</span>
               <span class="log-time">{{ formatTime(log.createdAt) }}</span>
             </div>
-            <div class="log-content">{{ log.content }}</div>
-            <div class="log-operator">操作人：{{ log.operator }}</div>
+            <div class="log-content" v-if="log.content">{{ log.content }}</div>
+            <div class="log-operator" v-if="log.operatorName">操作人：{{ log.operatorName }}</div>
           </div>
         </div>
       </div>
 
-      <!-- 操作按钮 -->
-      <div class="action-section" v-if="ticket && ticket.status !== '已解决' && ticket.status !== '已关闭'">
-        <button class="btn-action" @click="simulateEngineerAction">模拟工程师处理</button>
+      <!-- 追加备注 -->
+      <div class="action-section">
+        <div class="section-title">追加备注</div>
+        <textarea v-model="noteContent" placeholder="输入补充说明..." class="note-input" rows="3"></textarea>
+        <button class="btn-add-note" @click="addNote" :disabled="!noteContent.trim() || addingNote">提交</button>
       </div>
     </div>
+
+    <div v-else-if="loading" class="loading-state">加载中...</div>
+    <div v-else class="empty-state">工单不存在</div>
   </div>
 </template>
 
@@ -71,30 +80,59 @@
 import { ref, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import TicketStatusTag from '@/components/TicketStatusTag.vue'
-import { ticketRepo, ticketLogRepo, deviceRepo } from '@/store/repositories'
-import type { Ticket, TicketLog } from '@/models/types'
+import { getTicketDetail, getTicketLogs, addTicketLog, type TicketDetail as TicketDetailType, type TicketLogItem } from '@/api/tickets'
 
 const route = useRoute()
 const router = useRouter()
 
-const ticket = ref<Ticket | null>(null)
-const logs = ref<TicketLog[]>([])
+const ticket = ref<TicketDetailType | null>(null)
+const logs = ref<TicketLogItem[]>([])
+const loading = ref(true)
+const noteContent = ref('')
+const addingNote = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
   const ticketId = route.params.id as string
-  ticket.value = ticketRepo.getById(ticketId)
-  
-  if (!ticket.value) {
-    router.push('/tickets')
-    return
-  }
-
-  logs.value = ticketLogRepo.getByTicketId(ticketId)
+  await loadTicket(ticketId)
 })
 
-function getDeviceModel(deviceId: string): string {
-  const device = deviceRepo.getById(deviceId)
-  return device ? `${device.model} (${device.serialNo})` : '未知设备'
+async function loadTicket(id: string) {
+  loading.value = true
+  try {
+    const [detailRes, logsRes] = await Promise.all([
+      getTicketDetail(id),
+      getTicketLogs(id)
+    ])
+    ticket.value = detailRes
+    logs.value = logsRes
+  } catch (err) {
+    console.error('加载工单失败:', err)
+    ticket.value = null
+  } finally {
+    loading.value = false
+  }
+}
+
+function statusToCn(s: string): string {
+  const map: Record<string, string> = { pending: '待处理', processing: '处理中', resolved: '已解决', closed: '已关闭' }
+  return map[s] || s
+}
+
+function priorityToCn(p: string): string {
+  const map: Record<string, string> = { low: '低', medium: '中', high: '高', urgent: '紧急' }
+  return map[p] || p
+}
+
+function getActionText(action: string): string {
+  const map: Record<string, string> = {
+    create: '创建工单',
+    start: '开始处理',
+    resolve: '标记已解决',
+    close: '关闭工单',
+    comment: '添加备注',
+    convert_to_kb: '转为知识库'
+  }
+  return map[action] || action
 }
 
 function formatTime(timeStr: string): string {
@@ -108,51 +146,20 @@ function formatTime(timeStr: string): string {
   })
 }
 
-function simulateEngineerAction() {
-  if (!ticket.value) return
-
-  const actions = [
-    { action: '开始处理', content: '工程师已开始处理此工单，正在排查问题原因。', nextStatus: '处理中' as const },
-    { action: '问题排查', content: '已完成初步排查，确认为设备硬件故障，需要更换相关部件。', nextStatus: '处理中' as const },
-    { action: '问题解决', content: '已完成设备维修，问题已解决。设备已恢复正常运行。', nextStatus: '已解决' as const }
-  ]
-
-  const currentStatus = ticket.value.status
-  let actionIndex = 0
-  
-  if (currentStatus === '待处理') {
-    actionIndex = 0
-  } else if (currentStatus === '处理中') {
-    actionIndex = logs.value.length >= 2 ? 2 : 1
+async function addNote() {
+  if (!noteContent.value.trim() || !ticket.value) return
+  addingNote.value = true
+  try {
+    await addTicketLog(ticket.value.ticketId, { content: noteContent.value })
+    noteContent.value = ''
+    logs.value = await getTicketLogs(ticket.value.ticketId)
+    showToast('备注已添加')
+  } catch (err) {
+    console.error('添加备注失败:', err)
+    showToast('添加备注失败')
+  } finally {
+    addingNote.value = false
   }
-
-  const selectedAction = actions[actionIndex]
-
-  // 创建日志
-  const newLog = ticketLogRepo.create({
-    ticketId: ticket.value.ticketId,
-    action: selectedAction.action,
-    content: selectedAction.content,
-    operator: '工程师-张工',
-    createdAt: new Date().toISOString()
-  })
-  logs.value.push(newLog)
-
-  // 更新工单状态
-  const updates: Partial<Ticket> = {
-    status: selectedAction.nextStatus,
-    assignee: '工程师-张工'
-  }
-
-  if (selectedAction.nextStatus === '已解决') {
-    updates.finalSolutionSummary = selectedAction.content
-    updates.closedAt = new Date().toISOString()
-  }
-
-  ticketRepo.update(ticket.value.ticketId, updates)
-  ticket.value = { ...ticket.value, ...updates } as Ticket
-
-  showToast(`已${selectedAction.action}`)
 }
 
 function showToast(message: string) {
@@ -160,16 +167,10 @@ function showToast(message: string) {
   toast.className = 'toast-message'
   toast.textContent = message
   document.body.appendChild(toast)
-  
-  setTimeout(() => {
-    toast.classList.add('show')
-  }, 10)
-  
+  setTimeout(() => toast.classList.add('show'), 10)
   setTimeout(() => {
     toast.classList.remove('show')
-    setTimeout(() => {
-      document.body.removeChild(toast)
-    }, 300)
+    setTimeout(() => document.body.removeChild(toast), 300)
   }, 2000)
 }
 
@@ -264,21 +265,10 @@ function goBack() {
   font-weight: 500;
 }
 
-.value.priority.低 {
-  color: #52c41a;
-}
-
-.value.priority.中 {
-  color: #faad14;
-}
-
-.value.priority.高 {
-  color: #ff7875;
-}
-
-.value.priority.紧急 {
-  color: #ff4d4f;
-}
+.value.priority.p-low { color: #52c41a; }
+.value.priority.p-medium { color: #faad14; }
+.value.priority.p-high { color: #ff7875; }
+.value.priority.p-urgent { color: #ff4d4f; }
 
 .description-section,
 .solution-section {
@@ -354,29 +344,43 @@ function goBack() {
 }
 
 .action-section {
-  padding: 16px;
   background: #fff;
   border-radius: 12px;
+  padding: 16px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
-.btn-action {
+.note-input {
   width: 100%;
-  padding: 14px;
+  padding: 12px;
+  border: 1px solid #d9d9d9;
+  border-radius: 6px;
+  font-size: 14px;
+  resize: vertical;
+  margin-bottom: 12px;
+  box-sizing: border-box;
+}
+
+.btn-add-note {
+  padding: 10px 20px;
   background: #18a058;
   color: #fff;
   border: none;
-  border-radius: 8px;
-  font-size: 16px;
-  font-weight: 600;
+  border-radius: 6px;
+  font-size: 14px;
   cursor: pointer;
-  transition: all 0.3s;
 }
 
-.btn-action:hover {
-  background: #159050;
-  transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(24, 160, 88, 0.3);
+.btn-add-note:disabled {
+  background: #ccc;
+  cursor: not-allowed;
+}
+
+.loading-state,
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: #999;
 }
 
 .toast-message {

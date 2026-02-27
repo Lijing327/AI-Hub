@@ -42,6 +42,16 @@ public class ApplicationDbContext : DbContext
     /// </summary>
     public DbSet<User> Users { get; set; }
 
+    /// <summary>
+    /// 工单主表
+    /// </summary>
+    public DbSet<Ticket> Tickets { get; set; }
+
+    /// <summary>
+    /// 工单日志表
+    /// </summary>
+    public DbSet<TicketLog> TicketLogs { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -255,6 +265,7 @@ public class ApplicationDbContext : DbContext
             entity.Property(e => e.Account).HasColumnName("account").HasMaxLength(100).IsRequired();
             entity.Property(e => e.PasswordHash).HasColumnName("password_hash").HasMaxLength(256).IsRequired();
             entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(16).IsRequired();
+            entity.Property(e => e.Role).HasColumnName("role").HasMaxLength(16).IsRequired();
             entity.Property(e => e.DeviceMN).HasColumnName("device_mn").HasMaxLength(50);
             entity.Property(e => e.CreatedAt).HasColumnName("created_at").IsRequired();
             entity.Property(e => e.UpdatedAt).HasColumnName("updated_at").IsRequired();
@@ -263,6 +274,69 @@ public class ApplicationDbContext : DbContext
             entity.HasIndex(e => e.Account).IsUnique();
             entity.HasIndex(e => e.Status);
             entity.HasIndex(e => e.CreatedAt);
+        });
+
+        // ========== 工单表配置 ==========
+
+        // ticket
+        modelBuilder.Entity<Ticket>(entity =>
+        {
+            entity.ToTable("ticket");
+            entity.HasKey(e => e.TicketId);
+            entity.Property(e => e.TicketId).HasColumnName("ticket_id").HasDefaultValueSql("NEWID()");
+            entity.Property(e => e.TenantId).HasColumnName("tenant_id").HasMaxLength(64).IsRequired();
+            entity.Property(e => e.TicketNo).HasColumnName("ticket_no").HasMaxLength(32).IsRequired();
+            entity.Property(e => e.Title).HasColumnName("title").HasMaxLength(256).IsRequired();
+            entity.Property(e => e.Description).HasColumnName("description").HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.Status).HasColumnName("status").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.Priority).HasColumnName("priority").HasMaxLength(10).IsRequired();
+            entity.Property(e => e.Source).HasColumnName("source").HasMaxLength(20).IsRequired();
+            entity.Property(e => e.CustomerId).HasColumnName("customer_id").HasMaxLength(64);
+            entity.Property(e => e.DeviceId).HasColumnName("device_id").HasMaxLength(64);
+            entity.Property(e => e.DeviceMn).HasColumnName("device_mn").HasMaxLength(64);
+            entity.Property(e => e.SessionId).HasColumnName("session_id");
+            entity.Property(e => e.TriggerMessageId).HasColumnName("trigger_message_id");
+            entity.Property(e => e.AssigneeId).HasColumnName("assignee_id").HasMaxLength(64);
+            entity.Property(e => e.AssigneeName).HasColumnName("assignee_name").HasMaxLength(64);
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by").HasMaxLength(64).IsRequired();
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("GETDATE()").IsRequired();
+            entity.Property(e => e.UpdatedAt).HasColumnName("updated_at");
+            entity.Property(e => e.ClosedAt).HasColumnName("closed_at");
+            entity.Property(e => e.FinalSolutionSummary).HasColumnName("final_solution_summary").HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.MetaJson).HasColumnName("meta_json").HasColumnType("NVARCHAR(MAX)");
+            // KbArticleId 在 Ticket 模型上使用 [NotMapped]，未执行 012 迁移前不映射；执行迁移后需移除 NotMapped 并取消下方注释
+            // entity.Property(e => e.KbArticleId).HasColumnName("kb_article_id");
+
+            // 索引
+            entity.HasIndex(e => e.TenantId);
+            entity.HasIndex(e => e.Status);
+            entity.HasIndex(e => e.CreatedAt).IsDescending(true);
+            entity.HasIndex(e => e.TicketNo);
+            // entity.HasIndex(e => e.KbArticleId).HasFilter("[kb_article_id] IS NOT NULL");
+        });
+
+        // ticket_log（无数据库外键时，EF 级联由应用层处理）
+        modelBuilder.Entity<TicketLog>(entity =>
+        {
+            entity.ToTable("ticket_log");
+            entity.HasKey(e => e.LogId);
+            entity.Property(e => e.LogId).HasColumnName("log_id").UseIdentityColumn();
+            entity.Property(e => e.TicketId).HasColumnName("ticket_id").IsRequired();
+            entity.Property(e => e.Action).HasColumnName("action").HasMaxLength(64).IsRequired();
+            entity.Property(e => e.Content).HasColumnName("content").HasColumnType("NVARCHAR(MAX)");
+            entity.Property(e => e.OperatorId).HasColumnName("operator_id").HasMaxLength(64).IsRequired();
+            entity.Property(e => e.OperatorName).HasColumnName("operator_name").HasMaxLength(64);
+            entity.Property(e => e.NextStatus).HasColumnName("next_status").HasMaxLength(20);
+            entity.Property(e => e.CreatedAt).HasColumnName("created_at").HasDefaultValueSql("GETDATE()").IsRequired();
+
+            entity.HasOne<Ticket>()
+                  .WithMany()
+                  .HasForeignKey(e => e.TicketId)
+                  .OnDelete(DeleteBehavior.Cascade); // 应用层级联，删除工单时自动删日志
+
+            // 索引
+            entity.HasIndex(e => e.TicketId);
+            entity.HasIndex(e => e.CreatedAt).IsDescending(true);
         });
     }
 }

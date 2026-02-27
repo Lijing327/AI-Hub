@@ -53,8 +53,7 @@ BEGIN
         size BIGINT, -- 文件大小（字节）
         duration INT, -- 视频时长（秒，可选）
         created_at DATETIME NOT NULL DEFAULT GETDATE(), -- 创建时间
-        deleted_at DATETIME, -- 删除时间（软删除标记，NULL表示未删除）
-        FOREIGN KEY (article_id) REFERENCES kb_article(id) ON DELETE CASCADE
+        deleted_at DATETIME -- 删除时间（软删除标记，NULL表示未删除），不添加外键
     );
 
     -- 创建索引
@@ -103,8 +102,7 @@ BEGIN
         chunk_text NVARCHAR(MAX) NOT NULL, -- 块文本
         hash NVARCHAR(64), -- 用于去重（SHA256）
         source_fields NVARCHAR(100), -- 来自 question/cause/solution 哪部分
-        created_at DATETIME NOT NULL DEFAULT GETDATE(), -- 创建时间
-        FOREIGN KEY (article_id) REFERENCES kb_article(id) ON DELETE CASCADE
+        created_at DATETIME NOT NULL DEFAULT GETDATE() -- 创建时间，不添加外键
     );
 
     -- 创建索引

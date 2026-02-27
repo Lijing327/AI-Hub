@@ -16,6 +16,12 @@ namespace AiHub.Models
         public string Status { get; set; } = "active";
 
         /// <summary>
+        /// 角色：user（普通用户）/ engineer（工程师）/ admin（管理员）
+        /// 工程师和管理员可访问 /api/admin/tickets
+        /// </summary>
+        public string Role { get; set; } = "user";
+
+        /// <summary>
         /// 机器号（deviceMN），与 DeviceManager 表绑定，手机号注册时必填
         /// </summary>
         public string? DeviceMN { get; set; }

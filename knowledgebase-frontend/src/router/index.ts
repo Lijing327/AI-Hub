@@ -5,6 +5,8 @@ import KnowledgeDetail from '../views/KnowledgeDetail.vue'
 import ConversationList from '../views/ConversationList.vue'
 import ConversationDetail from '../views/ConversationDetail.vue'
 import AuditStats from '../views/AuditStats.vue'
+import TicketList from '../views/TicketList.vue'
+import TicketDetail from '../views/TicketDetail.vue'
 
 const router = createRouter({
   // 使用 hash 模式，避免服务器配置问题
@@ -52,6 +54,18 @@ const router = createRouter({
       path: '/audit/stats',
       name: 'AuditStats',
       component: AuditStats
+    },
+    // 工单管理
+    {
+      path: '/tickets',
+      name: 'TicketList',
+      component: TicketList
+    },
+    {
+      path: '/tickets/:id',
+      name: 'TicketDetail',
+      component: TicketDetail,
+      props: true
     }
   ]
 })

@@ -39,10 +39,7 @@ BEGIN
         content_len         INT                 NOT NULL DEFAULT 0,
         is_masked           BIT                 NOT NULL DEFAULT 0,
         masked_content      NVARCHAR(MAX)       NULL,
-        created_at          DATETIME2           NOT NULL DEFAULT GETUTCDATE(),
-
-        CONSTRAINT FK_ai_message_conversation FOREIGN KEY (conversation_id)
-            REFERENCES ai_conversation (conversation_id) ON DELETE CASCADE
+        created_at          DATETIME2           NOT NULL DEFAULT GETUTCDATE()  -- 不添加外键
     );
 
     -- 索引
@@ -64,10 +61,7 @@ BEGIN
         fallback_reason     NVARCHAR(128)       NULL,  -- no_match/low_confidence/model_error...
         tokens_in           INT                 NULL,
         tokens_out          INT                 NULL,
-        created_at          DATETIME2           NOT NULL DEFAULT GETUTCDATE(),
-
-        CONSTRAINT FK_ai_decision_message FOREIGN KEY (message_id)
-            REFERENCES ai_message (message_id) ON DELETE CASCADE
+        created_at          DATETIME2           NOT NULL DEFAULT GETUTCDATE()  -- 不添加外键
     );
 
     -- 索引
@@ -88,10 +82,7 @@ BEGIN
         score               DECIMAL(8,6)        NOT NULL DEFAULT 0,
         rank                INT                 NOT NULL DEFAULT 0,
         chunk_id            NVARCHAR(64)        NULL,
-        created_at          DATETIME2           NOT NULL DEFAULT GETUTCDATE(),
-
-        CONSTRAINT FK_ai_retrieval_message FOREIGN KEY (message_id)
-            REFERENCES ai_message (message_id) ON DELETE CASCADE
+        created_at          DATETIME2           NOT NULL DEFAULT GETUTCDATE()  -- 不添加外键
     );
 
     -- 索引
@@ -111,10 +102,7 @@ BEGIN
         is_success          BIT                 NOT NULL DEFAULT 1,
         error_type          NVARCHAR(64)        NULL,  -- model_error/timeout/no_match...
         error_detail        NVARCHAR(MAX)       NULL,
-        created_at          DATETIME2           NOT NULL DEFAULT GETUTCDATE(),
-
-        CONSTRAINT FK_ai_response_message FOREIGN KEY (message_id)
-            REFERENCES ai_message (message_id) ON DELETE CASCADE
+        created_at          DATETIME2           NOT NULL DEFAULT GETUTCDATE()  -- 不添加外键
     );
 
     -- 索引

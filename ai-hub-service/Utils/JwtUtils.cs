@@ -15,13 +15,18 @@ namespace AiHub.Utils
             _jwtSettings = jwtSettings;
         }
 
-        public string GenerateToken(string userId, string account)
+        /// <summary>
+        /// 生成 JWT，包含 userId、account、role（用于 AdminTicketsController 权限校验）
+        /// </summary>
+        public string GenerateToken(string userId, string account, string role = "user")
         {
             var claims = new[]
             {
                 new Claim(ClaimTypes.NameIdentifier, userId),
+                new Claim("user_id", userId),
                 new Claim(ClaimTypes.Name, account),
-                new Claim(ClaimTypes.MobilePhone, account)
+                new Claim(ClaimTypes.MobilePhone, account),
+                new Claim("role", role ?? "user")
             };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtSettings.Secret));

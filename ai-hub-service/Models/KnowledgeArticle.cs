@@ -17,6 +17,24 @@ public class KnowledgeArticle
     public int Id { get; set; }
 
     /// <summary>
+    /// 来源类型（如：ticket, manual）
+    /// 需执行迁移 010_AddSourceFieldsToKbArticle.sql 后，数据库才有此列；未迁移前用 NotMapped 避免查询报错
+    /// </summary>
+    [MaxLength(50)]
+    [Column("source_type")]
+    [NotMapped]
+    public string? SourceType { get; set; }
+
+    /// <summary>
+    /// 来源ID（对应 source_type 的ID）
+    /// 需执行迁移 010_AddSourceFieldsToKbArticle.sql 后，数据库才有此列；未迁移前用 NotMapped 避免查询报错
+    /// </summary>
+    [MaxLength(50)]
+    [Column("source_id")]
+    [NotMapped]
+    public string? SourceId { get; set; }
+
+    /// <summary>
     /// 租户ID
     /// </summary>
     [MaxLength(50)]

@@ -12,6 +12,8 @@ import SessionDetail from '@/views/SessionDetail.vue'
 import Tickets from '@/views/Tickets.vue'
 import TicketDetail from '@/views/TicketDetail.vue'
 import Admin from '@/views/Admin.vue'
+import AdminTickets from '@/views/AdminTickets.vue'
+import AdminTicketDetail from '@/views/AdminTicketDetail.vue'
 import Login from '@/views/Login.vue'
 import Register from '@/views/Register.vue'
 
@@ -57,12 +59,24 @@ const routes = [
   {
     path: '/tickets',
     name: 'Tickets',
-    component: Tickets
+    component: Tickets,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/admin/tickets',
+    name: 'AdminTickets',
+    component: AdminTickets
+  },
+  {
+    path: '/admin/ticket/:id',
+    name: 'AdminTicketDetail',
+    component: AdminTicketDetail
   },
   {
     path: '/ticket/:id',
     name: 'TicketDetail',
-    component: TicketDetail
+    component: TicketDetail,
+    meta: { requiresAuth: true }
   },
   {
     path: '/admin',

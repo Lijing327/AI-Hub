@@ -4,11 +4,11 @@ using ai_hub_service.Middleware;
 using ai_hub_service.Modules.AiAudit.Services;
 using AiHub.Services;
 using AiHub.Middleware;
+using AiHub.Utils;
+using AiHub.Configurations;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
-using AiHub.Utils;
-using AiHub.Configurations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -27,6 +27,10 @@ builder.Services.AddScoped<IKnowledgeArticleService, KnowledgeArticleService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<IIndexService, IndexService>();
 builder.Services.AddScoped<IAiAuditService, AiAuditService>();
+builder.Services.AddScoped<ITicketService, TicketService>();
+
+// 注册 HTTP 客户端工厂（用于调用 ai-hub-ai 服务）
+builder.Services.AddHttpClient();
 
 // 注册认证服务
 builder.Services.AddScoped<IAuthService, AuthService>();
