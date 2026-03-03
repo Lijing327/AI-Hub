@@ -194,6 +194,10 @@ public class Ticket
         public string IssueCategory { get; set; }
         public string AlarmCode { get; set; }
         public List<string> CitedDocs { get; set; } = new List<string>();
+        /// <summary>
+        /// 扩展字段（如联系电话 contactPhone，供技术人员回访）
+        /// </summary>
+        public System.Text.Json.Nodes.JsonNode? Extra { get; set; }
     }
 
     [NotMapped]

@@ -30,6 +30,10 @@
               <span class="label">创建时间：</span>
               <span class="value">{{ formatTime(ticket.createdAt) }}</span>
             </div>
+            <div class="info-item" v-if="ticket.meta?.extra?.contactPhone">
+              <span class="label">联系电话：</span>
+              <a :href="'tel:' + ticket.meta.extra.contactPhone" class="value contact-phone">{{ ticket.meta.extra.contactPhone }}</a>
+            </div>
             <div class="info-item" v-if="ticket.assigneeName">
               <span class="label">处理人：</span>
               <span class="value">{{ ticket.assigneeName }}</span>
@@ -175,6 +179,18 @@ function showToast(message: string) {
 }
 
 function goBack() {
+  const from = route.query.from as string
+  const sessionId = route.query.sessionId as string
+  const deviceId = route.query.deviceId as string
+  const customerId = route.query.customerId as string
+  // 从聊天页生成工单进入的，返回时恢复对话
+  if (from === 'chat' && sessionId && deviceId) {
+    router.replace({
+      path: '/chat',
+      query: { sessionId, deviceId, ...(customerId ? { customerId } : {}) }
+    })
+    return
+  }
   router.push('/tickets')
 }
 </script>
@@ -269,6 +285,14 @@ function goBack() {
 .value.priority.p-medium { color: #faad14; }
 .value.priority.p-high { color: #ff7875; }
 .value.priority.p-urgent { color: #ff4d4f; }
+
+.value.contact-phone {
+  color: #1890ff;
+  text-decoration: none;
+}
+.value.contact-phone:hover {
+  text-decoration: underline;
+}
 
 .description-section,
 .solution-section {

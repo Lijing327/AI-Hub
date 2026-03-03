@@ -137,7 +137,8 @@ public class TicketService : ITicketService
             {
                 IssueCategory = ticket.Meta.IssueCategory,
                 AlarmCode = ticket.Meta.AlarmCode,
-                CitedDocs = ticket.Meta.CitedDocs
+                CitedDocs = ticket.Meta.CitedDocs,
+                Extra = ticket.Meta.Extra
             } : null,
             KbArticleId = ticket.KbArticleId,
             Logs = logs.Select(l => new TicketLogDto

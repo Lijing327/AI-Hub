@@ -8,6 +8,7 @@ export interface CreateTicketMeta {
   issueCategory?: string
   alarmCode?: string
   citedDocs?: string[]
+  /** 扩展字段，如 contactPhone 联系电话（供技术人员回访） */
   extra?: Record<string, unknown>
 }
 
@@ -49,6 +50,14 @@ export interface TicketListResponse {
   pageSize: number
 }
 
+/** 工单 Meta（含扩展字段如联系电话） */
+export interface TicketMeta {
+  issueCategory?: string
+  alarmCode?: string
+  citedDocs?: string[]
+  extra?: { contactPhone?: string; [key: string]: unknown }
+}
+
 /** 工单详情 */
 export interface TicketDetail {
   ticketId: string
@@ -71,6 +80,7 @@ export interface TicketDetail {
   updatedAt?: string
   closedAt?: string
   finalSolutionSummary?: string
+  meta?: TicketMeta
   metaJson?: string
   logs?: TicketLogItem[]
 }

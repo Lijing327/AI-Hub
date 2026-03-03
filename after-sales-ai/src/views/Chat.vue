@@ -143,6 +143,36 @@
       </div>
     </div>
 
+    <!-- 生成工单 - 联系电话弹窗 -->
+    <div v-if="showCreateTicketModal" class="modal-overlay" @click.self="showCreateTicketModal = false">
+      <div class="modal-container">
+        <div class="modal-header">
+          <h3>生成工单</h3>
+          <button class="btn-close" @click="showCreateTicketModal = false">×</button>
+        </div>
+        <form class="create-ticket-form" @submit.prevent="submitCreateTicket">
+          <div class="form-group">
+            <label for="contact-phone">联系电话 <span class="required">*</span></label>
+            <input
+              id="contact-phone"
+              v-model="createTicketForm.contactPhone"
+              type="tel"
+              required
+              placeholder="请输入联系电话，便于技术人员回访沟通"
+              maxlength="20"
+              class="form-control"
+            />
+            <p class="form-hint">技术人员将使用此号码与您联系</p>
+          </div>
+          <p v-if="createTicketError" class="form-error">{{ createTicketError }}</p>
+          <div class="form-actions">
+            <button type="button" class="btn-cancel" @click="showCreateTicketModal = false">取消</button>
+            <button type="submit" class="btn-submit" :disabled="createTicketSubmitting || !createTicketForm.contactPhone.trim()">提交</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
     <!-- 更新资料弹窗 -->
     <div v-if="showProfileUpdate" class="modal-overlay" @click.self="showProfileUpdate = false">
       <div class="modal-container">
@@ -233,6 +263,14 @@ const profileForm = ref({
 const profileError = ref('')
 const profileSuccess = ref('')
 const profileSubmitting = ref(false)
+
+// 生成工单弹窗状态（需填写联系电话）
+const showCreateTicketModal = ref(false)
+const createTicketForm = ref({ contactPhone: '' })
+const createTicketError = ref('')
+const createTicketSubmitting = ref(false)
+/** 待创建工单时使用的 messageId（弹窗确认后执行创建） */
+const pendingCreateTicketMessageId = ref<string | null>(null)
 
 // 审计相关：后端返回的会话 ID（用于后续消息关联）
 const backendConversationId = ref<string | null>(null)
@@ -361,6 +399,7 @@ onMounted(async () => {
     if (session) {
       currentSessionId.value = sessionId
       loadMessages()
+      syncChatUrl()
     } else {
       createNewSession()
     }
@@ -384,12 +423,23 @@ function createNewSession() {
     escalatedToTicket: false
   })
   currentSessionId.value = newSession.sessionId
-  
+
   // 清除旧的后端会话 ID（新会话开始）
   backendConversationId.value = null
   sessionStorage.removeItem(CONVERSATION_ID_KEY)
-  
+
   loadMessages()
+  syncChatUrl()
+}
+
+/** 将当前会话信息同步到 URL，便于返回时恢复对话 */
+function syncChatUrl() {
+  const q: Record<string, string> = {
+    deviceId: currentDeviceId.value,
+    sessionId: currentSessionId.value
+  }
+  if (currentCustomerId.value) q.customerId = currentCustomerId.value
+  router.replace({ path: '/chat', query: q })
 }
 
 function loadMessages() {
@@ -524,8 +574,30 @@ async function sendMessage() {
 // }
 // 已移除快捷问题功能
 
-async function handleCreateTicket(messageId: string) {
+/** 点击「生成工单」时弹出联系电话输入弹窗 */
+function handleCreateTicket(messageId: string) {
   if (!device.value) return
+  const aiMeta = getAIMeta(messageId)
+  if (!aiMeta) return
+  // 预填：若当前用户账户像手机号则预填
+  const account = currentUser.value?.account ?? ''
+  const looksLikePhone = /^1[3-9]\d{9}$/.test(account) || /^\d{7,11}$/.test(account)
+  createTicketForm.value.contactPhone = looksLikePhone ? account : ''
+  createTicketError.value = ''
+  pendingCreateTicketMessageId.value = messageId
+  showCreateTicketModal.value = true
+}
+
+/** 提交联系电话并创建工单 */
+async function submitCreateTicket() {
+  const messageId = pendingCreateTicketMessageId.value
+  if (!messageId || !device.value) return
+
+  const phone = createTicketForm.value.contactPhone.trim()
+  if (!phone) {
+    createTicketError.value = '请输入联系电话'
+    return
+  }
 
   const aiMeta = getAIMeta(messageId)
   if (!aiMeta) return
@@ -539,6 +611,8 @@ async function handleCreateTicket(messageId: string) {
   const title = `工单：${aiMeta.issueCategory}${aiMeta.alarmCode ? ' - ' + aiMeta.alarmCode : ''}`
   const description = userContent ? `问题描述：${userContent}` : undefined
 
+  createTicketError.value = ''
+  createTicketSubmitting.value = true
   try {
     const ticket = await createTicket({
       title,
@@ -552,17 +626,32 @@ async function handleCreateTicket(messageId: string) {
       meta: {
         issueCategory: aiMeta.issueCategory,
         alarmCode: aiMeta.alarmCode,
-        citedDocs: aiMeta.citedDocs?.map((d) => d.title)
+        citedDocs: aiMeta.citedDocs?.map((d) => d.title),
+        extra: { contactPhone: phone }
       }
     })
 
+    showCreateTicketModal.value = false
+    pendingCreateTicketMessageId.value = null
+    createTicketForm.value.contactPhone = ''
     sessionRepo.update(currentSessionId.value, { escalatedToTicket: true })
-    router.push(`/ticket/${ticket.ticketId}`)
+    // 携带会话信息，返回时可恢复对话
+    router.push({
+      path: `/ticket/${ticket.ticketId}`,
+      query: {
+        from: 'chat',
+        sessionId: currentSessionId.value,
+        deviceId: currentDeviceId.value,
+        customerId: currentCustomerId.value || undefined
+      }
+    })
     showToast('工单创建成功')
   } catch (err: unknown) {
     console.error('创建工单失败:', err)
     const msg = (err as { response?: { data?: { message?: string } } })?.response?.data?.message || '创建工单失败'
-    showToast(msg)
+    createTicketError.value = msg
+  } finally {
+    createTicketSubmitting.value = false
   }
 }
 
@@ -1245,6 +1334,20 @@ watch(messages, () => {
 
 .form-group input[type="password"]::placeholder {
   color: #999;
+}
+
+.form-hint {
+  font-size: 12px;
+  color: #888;
+  margin-top: 6px;
+}
+
+.required {
+  color: #f56c6c;
+}
+
+.create-ticket-form {
+  padding: 20px;
 }
 
 .form-control {

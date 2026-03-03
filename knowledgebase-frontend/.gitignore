@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Vite 配置编译缓存
+vite.config.ts.timestamp-*.mjs
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

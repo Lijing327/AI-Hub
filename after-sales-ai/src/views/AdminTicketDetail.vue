@@ -17,7 +17,7 @@
           </div>
           <div class="info-item">
             <span class="label">状态:</span>
-            <span class="value status-{{ getStatusClass(ticket.status) }}">{{ getStatusText(ticket.status) }}</span>
+            <span class="value" :class="'status-' + getStatusClass(ticket.status)">{{ getStatusText(ticket.status) }}</span>
           </div>
           <div class="info-item">
             <span class="label">优先级:</span>
@@ -40,6 +40,10 @@
           <div class="info-item">
             <span class="label">创建时间:</span>
             <span class="value">{{ formatTime(ticket.createdAt) }}</span>
+          </div>
+          <div class="info-item" v-if="ticket.meta?.extra?.contactPhone">
+            <span class="label">联系电话:</span>
+            <a :href="'tel:' + ticket.meta.extra.contactPhone" class="value contact-phone">{{ ticket.meta.extra.contactPhone }}</a>
           </div>
           <div class="info-item" v-if="ticket.updatedAt">
             <span class="label">更新时间:</span>
@@ -192,7 +196,7 @@
         <p class="modal-hint">
           将基于工单的解决方案生成知识库文章，并自动触发向量入库。
         </p>
-        <div class="modal-info">
+        <div class="modal-info" v-if="ticket">
           <p><strong>标题:</strong> [{{ ticket.ticketNo }}] {{ ticket.title }}</p>
           <p><strong>问题:</strong> {{ ticket.description || '无描述' }}</p>
           <p><strong>解决方案:</strong> {{ ticket.finalSolutionSummary?.substring(0, 100) }}...</p>
@@ -208,6 +212,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { sessionRepo } from '@/store/repositories'
 import { useRoute, useRouter } from 'vue-router'
 import TicketStatusTag from '@/components/TicketStatusTag.vue'
 import api from '@/utils/api'
@@ -231,6 +236,7 @@ interface TicketDetailDto {
   finalSolutionSummary?: string
   sessionId?: string
   triggerMessageId?: string
+  meta?: { extra?: { contactPhone?: string } }
   metaJson?: string
 }
 
@@ -272,6 +278,12 @@ async function loadTicket() {
     const detailRes = await api.get(`admin/tickets/${id}`)
     ticket.value = detailRes.data
     logs.value = detailRes.data?.logs || []
+    // 若有 sessionId，尝试从本地仓储加载会话信息
+    if (ticket.value?.sessionId) {
+      aiSession.value = sessionRepo.getById(ticket.value.sessionId)
+    } else {
+      aiSession.value = null
+    }
   } catch (error: unknown) {
     console.error('加载工单详情失败:', error)
     const err = error as { response?: { data?: { message?: string } } }
@@ -279,6 +291,17 @@ async function loadTicket() {
     router.push('/admin/tickets')
   }
 }
+
+const sessionDuration = computed(() => {
+  const s = aiSession.value
+  if (!s) return '-'
+  const start = s.startTime
+  const end = s.endTime || new Date().toISOString()
+  if (!start || !end) return '-'
+  const diff = new Date(end).getTime() - new Date(start).getTime()
+  const mins = Math.floor(diff / 60000)
+  return mins >= 60 ? `${Math.floor(mins / 60)}小时${mins % 60}分钟` : `${mins}分钟`
+})
 
 function getStatusClass(status: string): string {
   const map: Record<string, string> = {
@@ -529,6 +552,14 @@ function goBack() {
 .value.monospace {
   font-family: monospace;
   word-break: break-all;
+}
+
+.value.contact-phone {
+  color: #1890ff;
+  text-decoration: none;
+}
+.value.contact-phone:hover {
+  text-decoration: underline;
 }
 
 .value.status-pending {

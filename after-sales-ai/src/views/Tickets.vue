@@ -134,7 +134,12 @@ function nextPage() {
 }
 
 function goBack() {
-  router.push('/chat')
+  // 若有历史记录则返回上一页（如从 Chat 进入可恢复对话），否则跳转聊天
+  if (window.history.length > 1) {
+    router.back()
+  } else {
+    router.push('/chat')
+  }
 }
 </script>
 

@@ -174,14 +174,28 @@ export interface ArticleDetailResponse {
 }
 
 /**
+ * 获取聊天 API 的 base URL
+ * 生产环境：VITE_PYTHON_BASE 指向 Python (6714)，直连 /api/chat/*
+ * 测试环境：相对路径 /python-api（Vite 代理到本地 Python）
+ */
+function getChatApiBase(): string {
+  const pythonBase = import.meta.env.VITE_PYTHON_BASE ?? ''
+  // 生产环境：直连 Python (6714)
+  if (pythonBase) {
+    return `${pythonBase}/api/chat`
+  }
+  // 测试环境：Vite 代理 /python-api → localhost:8000
+  return '/python-api/api/chat'
+}
+
+/**
  * 按文章 ID 拉取详情（可能原因、排查步骤、解决方案、参考资料）
  * 供前端点击「其他问题」时调用，无需首次请求带全量
  */
 export async function getArticleDetail(articleId: number): Promise<ArticleDetailResponse> {
-  const base = import.meta.env.VITE_PYTHON_BASE ?? import.meta.env.VITE_API_BASE ?? ''
-  const pythonApiBaseUrl = base ? `${base}/python-api` : '/python-api'
+  const chatBase = getChatApiBase()
   const response = await axios.get<ArticleDetailResponse>(
-    `${pythonApiBaseUrl}/api/chat/article-detail`,
+    `${chatBase}/article-detail`,
     { params: { article_id: articleId }, timeout: 15000 }
   )
   return response.data
@@ -189,17 +203,17 @@ export async function getArticleDetail(articleId: number): Promise<ArticleDetail
 
 /**
  * 调用Python服务进行智能搜索和回答
+ * 生产环境走 .NET 代理 /api/chat/search，测试环境走 /python-api/api/chat/search
  */
 export async function chatSearch(request: ChatRequest): Promise<ChatResponse> {
-  console.log('调用Python服务搜索:', request)
-  
-  const base = import.meta.env.VITE_PYTHON_BASE ?? import.meta.env.VITE_API_BASE ?? ''
-  const pythonApiBaseUrl = base ? `${base}/python-api` : '/python-api'
-  
+  console.log('调用智能客服搜索:', request)
+
+  const chatBase = getChatApiBase()
+
   try {
     // RAG + LLM 较慢，超时设为 60 秒，避免 15s 左右完成的请求被误判超时
     const response = await axios.post<ChatResponse>(
-      `${pythonApiBaseUrl}/api/chat/search`,
+      `${chatBase}/search`,
       request,
       {
         timeout: 60000,

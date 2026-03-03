@@ -1,17 +1,32 @@
 <template>
-  <span class="status-tag" :class="status">
-    {{ status }}
+  <span class="status-tag" :class="displayStatus">
+    {{ displayStatus }}
   </span>
 </template>
 
 <script setup lang="ts">
-import { defineProps } from 'vue'
+import { computed } from 'vue'
 
+// 支持中文字符串或英文状态，统一转为中文显示
+type StatusCn = '待处理' | '处理中' | '已解决' | '已关闭'
 interface Props {
-  status: '待处理' | '处理中' | '已解决' | '已关闭'
+  status: string
 }
 
-defineProps<Props>()
+const props = defineProps<Props>()
+
+const statusMap: Record<string, StatusCn> = {
+  pending: '待处理',
+  processing: '处理中',
+  resolved: '已解决',
+  closed: '已关闭',
+  待处理: '待处理',
+  处理中: '处理中',
+  已解决: '已解决',
+  已关闭: '已关闭'
+}
+
+const displayStatus = computed<StatusCn>(() => statusMap[props.status] || '待处理')
 </script>
 
 <style scoped>
