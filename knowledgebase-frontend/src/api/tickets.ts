@@ -4,15 +4,8 @@
 import axios from 'axios'
 import { apiConfig } from '@/config/api'
 
-const getApiBaseUrl = () => {
-  if (import.meta.env.PROD) {
-    return apiConfig.baseURL || import.meta.env.VITE_API_BASE_URL || '/api'
-  }
-  return '/api'
-}
-
 const api = axios.create({
-  baseURL: getApiBaseUrl(),
+  baseURL: apiConfig.baseURL,
   timeout: 15000,
   headers: { 'Content-Type': 'application/json' }
 })

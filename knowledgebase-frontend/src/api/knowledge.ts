@@ -1,24 +1,9 @@
 import axios from 'axios'
+import { apiConfig } from '@/config/api'
 import type { KnowledgeItemDto, CreateKnowledgeItemDto, UpdateKnowledgeItemDto, SearchKnowledgeItemDto, PagedResultDto } from '../types/knowledge'
 
-// 根据环境变量或当前域名自动判断API地址
-const getApiBaseUrl = () => {
-  // 生产环境：如果设置了环境变量，使用环境变量；否则根据当前域名推断
-  if (import.meta.env.PROD) {
-    const envApiUrl = import.meta.env.VITE_API_BASE_URL
-    if (envApiUrl) {
-      return envApiUrl
-    }
-    // 如果前端和后端在同一域名下，使用相对路径
-    // 如果不在同一域名，需要配置 VITE_API_BASE_URL 环境变量
-    return '/api'
-  }
-  // 开发环境：使用代理
-  return '/api'
-}
-
 const api = axios.create({
-  baseURL: getApiBaseUrl(),
+  baseURL: apiConfig.baseURL,
   timeout: 10000
 })
 
