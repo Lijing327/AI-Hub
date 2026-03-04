@@ -84,16 +84,44 @@
 
     <!-- 底部输入区 -->
     <div class="chat-input-area">
-      <!-- 快捷问题已移除，不再显示模拟数据 -->
+      <!-- 待发送图片预览 -->
+      <div v-if="pendingImages.length > 0" class="pending-images">
+        <div v-for="(img, idx) in pendingImages" :key="idx" class="pending-img-wrap">
+          <img :src="img" alt="待发送" class="pending-img" />
+          <button type="button" class="btn-remove-img" @click="removePendingImage(idx)" aria-label="移除图片">×</button>
+        </div>
+      </div>
       <div class="input-row">
         <input
+          ref="inputFieldRef"
           v-model="inputText"
           type="text"
           class="input-field"
           placeholder="输入您的问题..."
           @keyup.enter="sendMessage"
         />
-        <button class="btn-send" @click="sendMessage" :disabled="!inputText.trim() || isLoading">
+        <!-- 图片上传按钮 -->
+        <label class="btn-icon btn-upload" :class="{ disabled: isLoading }" title="上传图片">
+          <input
+            ref="fileInputRef"
+            type="file"
+            accept="image/*"
+            multiple
+            @change="handleImageSelect"
+          />
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon-svg"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/></svg>
+        </label>
+        <!-- 语音输入按钮 -->
+        <button
+          type="button"
+          class="btn-icon btn-voice"
+          :class="{ disabled: isLoading, recording: isRecording }"
+          :title="isRecording ? '正在录音，点击结束' : '语音输入'"
+          @click="toggleVoiceInput"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" class="icon-svg"><path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3zm-1-9c0-.55.45-1 1-1s1 .45 1 1v6c0 .55-.45 1-1 1s-1-.45-1-1V5zm6 6c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/></svg>
+        </button>
+        <button class="btn-send" @click="sendMessage" :disabled="(!inputText.trim() && pendingImages.length === 0) || isLoading">
           {{ isLoading ? '发送中...' : '发送' }}
         </button>
       </div>
@@ -236,6 +264,12 @@ const aiMetas = ref<AIResponseMeta[]>([])
 // const demoQuestions = ref(demoQuestionsData) // 已移除演示问题
 const inputText = ref('')
 const showDevicePicker = ref(false)
+/** 待发送的图片（base64 或 data URL） */
+const pendingImages = ref<string[]>([])
+const fileInputRef = ref<HTMLInputElement | null>(null)
+const inputFieldRef = ref<HTMLInputElement | null>(null)
+/** 语音识别是否正在录音 */
+const isRecording = ref(false)
 const messagesContainer = ref<HTMLElement | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -411,6 +445,11 @@ onMounted(async () => {
 
 onUnmounted(() => {
   document.removeEventListener('click', closeMenuOnClickOutside);
+  // 停止语音识别
+  if (voiceRecognition) {
+    voiceRecognition.stop();
+    voiceRecognition = null;
+  }
 });
 
 function createNewSession() {
@@ -448,12 +487,104 @@ function loadMessages() {
   scrollToBottom()
 }
 
+/** 选择图片后转为 base64 并加入待发送列表 */
+function handleImageSelect(event: Event) {
+  const target = event.target as HTMLInputElement
+  const files = target.files
+  if (!files || files.length === 0) return
+  const maxSize = 5 * 1024 * 1024 // 5MB
+  const maxCount = 4
+  for (let i = 0; i < files.length && pendingImages.value.length < maxCount; i++) {
+    const file = files[i]
+    if (!file.type.startsWith('image/')) continue
+    if (file.size > maxSize) {
+      showToast(`图片 ${file.name} 超过 5MB，已跳过`)
+      continue
+    }
+    const reader = new FileReader()
+    reader.onload = () => {
+      const dataUrl = reader.result as string
+      if (dataUrl && pendingImages.value.length < maxCount) {
+        pendingImages.value = [...pendingImages.value, dataUrl]
+      }
+    }
+    reader.readAsDataURL(file)
+  }
+  target.value = ''
+}
+
+/** 移除待发送图片 */
+function removePendingImage(index: number) {
+  pendingImages.value = pendingImages.value.filter((_, i) => i !== index)
+}
+
+/** 语音识别实例（用于停止） */
+let voiceRecognition: any = null
+
+/** 根据错误类型返回友好提示 */
+function getVoiceErrorTip(error: string): string {
+  const tips: Record<string, string> = {
+    'not-allowed': '请允许麦克风权限后重试',
+    'no-speech': '未检测到语音，请靠近麦克风说话',
+    'audio-capture': '麦克风不可用，请检查设备或权限',
+    'network': '网络异常，语音识别需要联网',
+    'service-not-allowed': '语音服务不可用，请稍后重试',
+    'language-not-supported': '当前浏览器可能不支持中文识别',
+    'aborted': ''
+  }
+  return tips[error] || '语音识别出错，请重试'
+}
+
+/** 语音输入：使用 Web Speech API 将语音转为文字 */
+function toggleVoiceInput() {
+  if (isLoading.value) return
+  const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+  if (!SpeechRecognition) {
+    showToast('您的浏览器不支持语音输入，请使用 Chrome 或 Edge')
+    return
+  }
+  // 非 localhost 需 HTTPS，否则语音识别可能失败
+  if (typeof window !== 'undefined' && !window.isSecureContext) {
+    showToast('语音输入需在 HTTPS 或 localhost 环境下使用')
+    return
+  }
+  if (isRecording.value && voiceRecognition) {
+    voiceRecognition.stop()
+    isRecording.value = false
+    return
+  }
+  voiceRecognition = new SpeechRecognition()
+  voiceRecognition.lang = 'zh-CN'
+  voiceRecognition.continuous = true
+  voiceRecognition.interimResults = true
+  voiceRecognition.onresult = (event: any) => {
+    let finalText = ''
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      const result = event.results[i]
+      if (result.isFinal) finalText += result[0].transcript
+    }
+    if (finalText) inputText.value = (inputText.value + finalText).trim()
+  }
+  voiceRecognition.onerror = (event: any) => {
+    const tip = getVoiceErrorTip(event.error || '')
+    if (tip) showToast(tip)
+    isRecording.value = false
+  }
+  voiceRecognition.onend = () => {
+    isRecording.value = false
+  }
+  voiceRecognition.start()
+  isRecording.value = true
+}
+
 async function sendMessage() {
   const text = inputText.value.trim()
+  const images = [...pendingImages.value]
   
-  // 输入验证
-  if (!text || !currentSessionId.value) return
-  if (text.length > 500) {
+  // 输入验证：至少要有文字或图片
+  if ((!text && images.length === 0) || !currentSessionId.value) return
+  const questionForAI = text || (images.length > 0 ? '用户上传了设备故障图片，请根据常见故障排查建议回复' : '')
+  if (questionForAI.length > 500) {
     errorMessage.value = '消息长度不能超过 500 个字符'
     setTimeout(() => { errorMessage.value = null }, 3000)
     return
@@ -464,15 +595,17 @@ async function sendMessage() {
   // 清除错误信息
   errorMessage.value = null
 
-  // 添加用户消息
+  // 添加用户消息（含附件）
   const userMessage = messageRepo.create({
     sessionId: currentSessionId.value,
     role: 'user',
-    content: text,
+    content: text || (images.length > 0 ? '[图片]' : ''),
+    attachments: images.length > 0 ? images : undefined,
     createdAt: new Date().toISOString()
   })
   messages.value.push(userMessage)
   inputText.value = ''
+  pendingImages.value = []
   scrollToBottom()
 
   // 调用 AI
@@ -489,7 +622,7 @@ async function sendMessage() {
   try {
     // 传入后端会话 ID（首次为空，后续带上）
     const aiResponse = await generateAIResponse(
-      text,
+      questionForAI,
       device.value,
       backendConversationId.value || undefined,
       currentCustomerId.value || undefined,
@@ -1100,10 +1233,110 @@ watch(messages, () => {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+.pending-images {
+  display: flex;
+  gap: 8px;
+  padding: 8px 16px 0;
+  flex-wrap: wrap;
+}
+
+.pending-img-wrap {
+  position: relative;
+  width: 64px;
+  height: 64px;
+}
+
+.pending-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.btn-remove-img {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #f56c6c;
+  color: #fff;
+  border: none;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+}
+
 .input-row {
   display: flex;
   gap: 8px;
   padding: 12px 16px;
+  align-items: center;
+}
+
+.btn-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: none;
+  background: #f0f0f0;
+  color: #666;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.btn-icon:hover:not(.disabled) {
+  background: #e0e0e0;
+  color: #333;
+}
+
+.btn-icon.disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-upload {
+  position: relative;
+}
+
+.btn-upload input {
+  position: absolute;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+}
+
+.btn-upload.disabled input {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.btn-voice.recording {
+  background: #ffebee;
+  color: #f56c6c;
+  animation: pulse-recording 1s ease-in-out infinite;
+}
+
+@keyframes pulse-recording {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.icon-svg {
+  width: 22px;
+  height: 22px;
 }
 
 .input-field {

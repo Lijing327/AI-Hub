@@ -194,6 +194,23 @@ app.UseStaticFiles(new StaticFileOptions
     }
 });
 
+// 支持 uploads_test 路径（测试环境 FileStorage:LocalPath 可能为 wwwroot/uploads_test）
+var uploadsTestPath = Path.Combine(app.Environment.ContentRootPath, "wwwroot", "uploads_test");
+if (Directory.Exists(uploadsTestPath))
+{
+    app.UseStaticFiles(new StaticFileOptions
+    {
+        FileProvider = new PhysicalFileProvider(uploadsTestPath),
+        RequestPath = "/uploads_test",
+        OnPrepareResponse = ctx =>
+        {
+            ctx.Context.Response.Headers.Append("Access-Control-Allow-Origin", "*");
+            ctx.Context.Response.Headers.Append("Access-Control-Allow-Methods", "GET, OPTIONS");
+            ctx.Context.Response.Headers.Append("Access-Control-Allow-Headers", "*");
+        }
+    });
+}
+
 app.UseAuthorization();
 app.MapControllers();
 

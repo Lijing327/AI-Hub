@@ -128,17 +128,46 @@
       </template>
     </el-dialog>
 
-    <!-- 转为知识库弹窗 -->
-    <el-dialog v-model="showConvertKbDialog" title="转为知识库文章" width="500px" @close="closeDialogs">
-      <p class="dialog-hint">将基于工单的解决方案生成知识库文章，并自动触发向量入库。</p>
-      <div v-if="ticket" class="dialog-preview">
-        <p><strong>标题：</strong>[{{ ticket.ticketNo }}] {{ ticket.title }}</p>
-        <p><strong>问题：</strong>{{ ticket.description || '无描述' }}</p>
-        <p><strong>解决方案：</strong>{{ ticket.finalSolutionSummary?.substring(0, 100) }}...</p>
-      </div>
+    <!-- 转为知识库弹窗（可编辑，与知识条目结构一致） -->
+    <el-dialog v-model="showConvertKbDialog" title="转为知识库文章" width="620px" @open="initConvertForm" @close="closeDialogs">
+      <p class="dialog-hint">将基于工单的解决方案生成知识库文章，并自动触发向量入库。转换前可编辑以下内容，与知识条目结构一致。</p>
+      <el-form v-if="ticket" label-width="90px" class="convert-form">
+        <el-form-item label="标题">
+          <el-input v-model="convertForm.title" placeholder="知识库文章标题" maxlength="500" show-word-limit />
+        </el-form-item>
+        <el-form-item label="问题描述">
+          <el-input v-model="convertForm.questionText" type="textarea" :rows="3" placeholder="用户问题/现象描述" />
+        </el-form-item>
+        <el-form-item label="原因分析">
+          <el-input v-model="convertForm.causeText" type="textarea" :rows="3" placeholder="可能原因 1、2、3…" />
+        </el-form-item>
+        <el-form-item label="解决方案" required>
+          <el-input v-model="convertForm.solutionText" type="textarea" :rows="5" placeholder="最终解决方案（必填）" />
+        </el-form-item>
+        <el-form-item label="适用范围">
+          <el-input v-model="convertForm.scopeJson" type="textarea" :rows="2" placeholder='JSON 格式，如 {"设备系列":"YH400/YH500"} 或 {"device_mn":"设备编号"}' />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input v-model="convertForm.tags" type="textarea" :rows="2" placeholder="多个标签用逗号分隔，如：造型机, 油温过高, YH400" />
+        </el-form-item>
+        <el-form-item label="附件">
+          <el-upload
+            ref="convertUploadRef"
+            v-model:file-list="convertFileList"
+            :auto-upload="false"
+            :limit="10"
+            :on-exceed="handleConvertUploadExceed"
+            list-type="picture-card"
+            accept="image/*,video/*,application/pdf"
+          >
+            <el-icon><Plus /></el-icon>
+          </el-upload>
+          <div class="upload-tip">支持图片、视频、PDF，单个不超过 50MB，最多 10 个</div>
+        </el-form-item>
+      </el-form>
       <template #footer>
         <el-button @click="showConvertKbDialog = false">取消</el-button>
-        <el-button type="warning" @click="submitConvertKb">确认转换</el-button>
+        <el-button type="warning" @click="submitConvertKb" :disabled="!convertForm.solutionText?.trim()">确认转换</el-button>
       </template>
     </el-dialog>
   </div>
@@ -147,9 +176,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft } from '@element-plus/icons-vue'
+import { ArrowLeft, Plus } from '@element-plus/icons-vue'
 import { ElMessage } from 'element-plus'
 import { ticketApi, type TicketDetail as TicketDetailType, type TicketLogItem } from '@/api/tickets'
+import { attachmentApi } from '@/api/knowledge'
 
 const props = defineProps<{ id: string }>()
 const route = useRoute()
@@ -170,6 +200,20 @@ const startNote = ref('')
 const resolveSummary = ref('')
 const resolveNote = ref('')
 const closeNote = ref('')
+
+/** 转为知识库表单（可编辑，与知识条目结构一致） */
+const convertForm = ref({
+  title: '',
+  questionText: '',
+  causeText: '',
+  solutionText: '',
+  scopeJson: '',
+  tags: ''
+})
+
+/** 转为知识库时选择的附件（转换成功后上传） */
+const convertFileList = ref<{ uid: string; name: string; raw?: File }[]>([])
+const convertUploadRef = ref()
 
 const ticketId = computed(() => (props.id ?? route.params.id) as string)
 
@@ -223,6 +267,38 @@ function getActionText(a: string): string {
   return map[a] || a
 }
 
+/** 打开转为知识库弹窗时，用工单数据初始化表单 */
+function initConvertForm() {
+  const t = ticket.value
+  if (!t) return
+  const meta = (t as { meta?: { issueCategory?: string; alarmCode?: string } }).meta
+  const ic = meta?.issueCategory ?? ''
+  const ac = meta?.alarmCode ?? ''
+  const defaultTitle =
+    ic || ac ? `[${t.ticketNo}] ${ic} - ${ac} - ${t.title}`.replace(/\s*-\s*$/, '').trim() : `[${t.ticketNo}] ${t.title}`
+  const defaultCause =
+    ic || ac
+      ? `根据 AI 智能客服判断，问题分类为：${ic}${ac ? `\n报警代码：${ac}` : ''}`
+      : '详见最终解决方案'
+  const defaultScope =
+    (t as { deviceMn?: string }).deviceMn
+      ? JSON.stringify({ device_mn: (t as { deviceMn?: string }).deviceMn }, null, 2)
+      : ''
+  convertForm.value = {
+    title: defaultTitle,
+    questionText: t.description || '无详细描述',
+    causeText: defaultCause,
+    solutionText: t.finalSolutionSummary || '',
+    scopeJson: defaultScope,
+    tags: `工单，${t.ticketNo}，${ic || '未分类'}`
+  }
+  convertFileList.value = []
+}
+
+function handleConvertUploadExceed() {
+  ElMessage.warning('最多上传 10 个附件')
+}
+
 function formatTime(s: string): string {
   return new Date(s).toLocaleString('zh-CN', {
     year: 'numeric',
@@ -238,6 +314,7 @@ function closeDialogs() {
   showResolveDialog.value = false
   showCloseDialog.value = false
   showConvertKbDialog.value = false
+  convertFileList.value = []
 }
 
 async function submitStart() {
@@ -284,8 +361,41 @@ async function submitClose() {
 }
 
 async function submitConvertKb() {
+  if (!convertForm.value.solutionText?.trim()) {
+    ElMessage.warning('请填写解决方案')
+    return
+  }
+  const filesToUpload = convertFileList.value.filter((f) => f.raw).map((f) => f.raw as File)
+  const hasInvalidFile = filesToUpload.some((f) => {
+    const okType = f.type.startsWith('image/') || f.type.startsWith('video/') || f.type === 'application/pdf'
+    const okSize = f.size / 1024 / 1024 < 50
+    return !okType || !okSize
+  })
+  if (hasInvalidFile) {
+    ElMessage.error('附件仅支持图片、视频、PDF，单个不超过 50MB')
+    return
+  }
   try {
-    const res = await ticketApi.convertToKb(ticketId.value)
+    const res = await ticketApi.convertToKb(ticketId.value, {
+      title: convertForm.value.title.trim() || undefined,
+      questionText: convertForm.value.questionText.trim() || undefined,
+      causeText: convertForm.value.causeText.trim() || undefined,
+      solutionText: convertForm.value.solutionText.trim(),
+      scopeJson: convertForm.value.scopeJson.trim() || undefined,
+      tags: convertForm.value.tags.trim() || undefined
+    })
+    const articleId = res.articleId
+    if (articleId != null && filesToUpload.length > 0) {
+      for (const file of filesToUpload) {
+        try {
+          await attachmentApi.upload(articleId, file)
+        } catch (upErr: unknown) {
+          const e = upErr as { response?: { data?: string } }
+          console.error('附件上传失败:', file.name, e)
+          ElMessage.warning(`附件 ${file.name} 上传失败`)
+        }
+      }
+    }
     const msg = res.vectorSuccess
       ? `${res.message || '已成功转为知识库文章'}\n向量入库：${res.vectorMessage || '成功'}`
       : `${res.message || '已转为知识库文章'}\n向量入库：${res.vectorMessage || '失败'}`
@@ -381,6 +491,20 @@ function goBack() {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
+}
+
+.convert-form {
+  margin-top: 12px;
+}
+
+.convert-form :deep(.el-form-item) {
+  margin-bottom: 16px;
+}
+
+.upload-tip {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 6px;
 }
 
 .dialog-hint {

@@ -471,7 +471,7 @@ public class TicketService : ITicketService
     /// 将工单转换为知识库文章
     /// </summary>
     public async Task<(int articleId, string message, bool vectorSuccess)> ConvertToKbAsync(
-        Guid ticketId, string userId, string tenantId, bool triggerVectorIndex = true)
+        Guid ticketId, ConvertToKbRequest? request, string userId, string tenantId)
     {
         var ticket = await _context.Tickets
             .FirstOrDefaultAsync(t => t.TicketId == ticketId && t.TenantId == tenantId);
@@ -502,9 +502,11 @@ public class TicketService : ITicketService
             throw new InvalidOperationException("该工单已转换为知识库文章，无法重复转换");
         }
 
-        if (string.IsNullOrWhiteSpace(ticket.FinalSolutionSummary))
+        var triggerVectorIndex = request?.TriggerVectorIndex ?? true;
+
+        if (string.IsNullOrWhiteSpace(ticket.FinalSolutionSummary) && string.IsNullOrWhiteSpace(request?.SolutionText))
         {
-            throw new InvalidOperationException("工单 final_solution_summary 为空，无法转为知识库");
+            throw new InvalidOperationException("工单 final_solution_summary 为空且未提供解决方案覆盖，无法转为知识库");
         }
 
         // 从 meta_json 解析 AI 元数据（如果存在）
@@ -516,16 +518,29 @@ public class TicketService : ITicketService
             alarmCode = ticket.Meta.AlarmCode;
         }
 
-        // 构建知识库文章内容
-        var title = string.IsNullOrWhiteSpace(issueCategory) && string.IsNullOrWhiteSpace(alarmCode)
-            ? $"[{ticket.TicketNo}] {ticket.Title}"
-            : $"[{ticket.TicketNo}] {issueCategory ?? ""} - {alarmCode ?? ""} - {ticket.Title}".TrimEnd(' ', '-');
+        // 构建知识库文章内容（支持请求体覆盖）
+        string title;
+        if (!string.IsNullOrWhiteSpace(request?.Title))
+        {
+            title = request.Title.Trim();
+        }
+        else
+        {
+            title = string.IsNullOrWhiteSpace(issueCategory) && string.IsNullOrWhiteSpace(alarmCode)
+                ? $"[{ticket.TicketNo}] {ticket.Title}"
+                : $"[{ticket.TicketNo}] {issueCategory ?? ""} - {alarmCode ?? ""} - {ticket.Title}".TrimEnd(' ', '-');
+        }
 
-        var questionText = ticket.Description ?? "无详细描述";
+        var questionText = !string.IsNullOrWhiteSpace(request?.QuestionText)
+            ? request.QuestionText.Trim()
+            : (ticket.Description ?? "无详细描述");
 
-        // 原因分析：尝试从 meta_json 提取或由工单标题推断
         string causeText;
-        if (!string.IsNullOrWhiteSpace(issueCategory))
+        if (!string.IsNullOrWhiteSpace(request?.CauseText))
+        {
+            causeText = request.CauseText.Trim();
+        }
+        else if (!string.IsNullOrWhiteSpace(issueCategory))
         {
             causeText = $"根据 AI 智能客服判断，问题分类为：{issueCategory}";
             if (!string.IsNullOrWhiteSpace(alarmCode))
@@ -538,12 +553,17 @@ public class TicketService : ITicketService
             causeText = "详见最终解决方案";
         }
 
-        // 解决步骤使用最终的解决方案摘要
-        var solutionText = ticket.FinalSolutionSummary;
+        var solutionText = !string.IsNullOrWhiteSpace(request?.SolutionText)
+            ? request.SolutionText.Trim()
+            : ticket.FinalSolutionSummary;
 
-        // 适用范围：使用设备信息填充
+        // 适用范围：优先使用请求覆盖，否则从设备信息填充
         string? scopeJson = null;
-        if (!string.IsNullOrWhiteSpace(ticket.DeviceMn) || !string.IsNullOrWhiteSpace(ticket.DeviceId))
+        if (!string.IsNullOrWhiteSpace(request?.ScopeJson))
+        {
+            scopeJson = request.ScopeJson.Trim();
+        }
+        else if (!string.IsNullOrWhiteSpace(ticket.DeviceMn) || !string.IsNullOrWhiteSpace(ticket.DeviceId))
         {
             var scopeDict = new Dictionary<string, string>();
             if (!string.IsNullOrWhiteSpace(ticket.DeviceMn))
@@ -552,6 +572,10 @@ public class TicketService : ITicketService
                 scopeDict["device_id"] = ticket.DeviceId;
             scopeJson = JsonSerializer.Serialize(scopeDict);
         }
+
+        var tags = !string.IsNullOrWhiteSpace(request?.Tags)
+            ? request.Tags.Trim()
+            : $"工单，{ticket.TicketNo},{issueCategory ?? "未分类"}";
 
         // 创建知识库文章
         var article = new KnowledgeArticle
@@ -562,7 +586,7 @@ public class TicketService : ITicketService
             CauseText = causeText,
             SolutionText = solutionText,
             ScopeJson = scopeJson,
-            Tags = $"工单，{ticket.TicketNo},{issueCategory ?? "未分类"}",
+            Tags = tags,
             Status = "draft",
             Version = 1,
             CreatedBy = userId,

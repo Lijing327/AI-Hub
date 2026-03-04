@@ -305,4 +305,34 @@ public class ConvertToKbRequest
     /// 是否触发向量入库（默认 true）
     /// </summary>
     public bool TriggerVectorIndex { get; set; } = true;
+
+    /// <summary>
+    /// 覆盖标题（可选，不传则从工单自动生成）
+    /// </summary>
+    public string? Title { get; set; }
+
+    /// <summary>
+    /// 覆盖问题描述（可选，对应 question_text）
+    /// </summary>
+    public string? QuestionText { get; set; }
+
+    /// <summary>
+    /// 覆盖原因分析（可选，对应 cause_text）
+    /// </summary>
+    public string? CauseText { get; set; }
+
+    /// <summary>
+    /// 覆盖解决方案（可选，对应 solution_text）
+    /// </summary>
+    public string? SolutionText { get; set; }
+
+    /// <summary>
+    /// 覆盖适用范围（可选，JSON 格式，对应 scope_json）
+    /// </summary>
+    public string? ScopeJson { get; set; }
+
+    /// <summary>
+    /// 覆盖标签（可选，逗号分隔，对应 tags）
+    /// </summary>
+    public string? Tags { get; set; }
 }

@@ -108,7 +108,7 @@
         </template>
 
         <template v-if="ticket.status === 'resolved'">
-          <button class="btn-secondary" @click="showConvertKbModal = true">转为知识库</button>
+          <button class="btn-secondary" @click="openConvertKbModal">转为知识库</button>
           <button class="btn-secondary" @click="showCloseModal = true">关闭工单</button>
         </template>
 
@@ -189,21 +189,52 @@
       </div>
     </div>
 
-    <!-- 转为知识库弹窗 -->
+    <!-- 转为知识库弹窗（可编辑，与知识条目结构一致） -->
     <div v-if="showConvertKbModal" class="modal-overlay" @click.self="closeModals">
-      <div class="modal">
+      <div class="modal modal-convert">
         <h3>转为知识库文章</h3>
-        <p class="modal-hint">
-          将基于工单的解决方案生成知识库文章，并自动触发向量入库。
-        </p>
-        <div class="modal-info" v-if="ticket">
-          <p><strong>标题:</strong> [{{ ticket.ticketNo }}] {{ ticket.title }}</p>
-          <p><strong>问题:</strong> {{ ticket.description || '无描述' }}</p>
-          <p><strong>解决方案:</strong> {{ ticket.finalSolutionSummary?.substring(0, 100) }}...</p>
+        <p class="modal-hint">将基于工单的解决方案生成知识库文章，并自动触发向量入库。转换前可编辑以下内容，与知识条目结构一致。</p>
+        <div v-if="ticket" class="convert-form">
+          <div class="form-group">
+            <label>标题</label>
+            <input v-model="convertForm.title" type="text" class="form-control" placeholder="知识库文章标题" maxlength="500" />
+          </div>
+          <div class="form-group">
+            <label>问题描述</label>
+            <textarea v-model="convertForm.questionText" class="form-control" rows="3" placeholder="用户问题/现象描述"></textarea>
+          </div>
+          <div class="form-group">
+            <label>原因分析</label>
+            <textarea v-model="convertForm.causeText" class="form-control" rows="3" placeholder="可能原因 1、2、3…"></textarea>
+          </div>
+          <div class="form-group">
+            <label>解决方案 <span class="required">*</span></label>
+            <textarea v-model="convertForm.solutionText" class="form-control" rows="5" placeholder="最终解决方案（必填）"></textarea>
+          </div>
+          <div class="form-group">
+            <label>适用范围</label>
+            <textarea v-model="convertForm.scopeJson" class="form-control" rows="2" placeholder='JSON 格式，如 {"设备系列":"YH400/YH500"}'></textarea>
+          </div>
+          <div class="form-group">
+            <label>标签</label>
+            <textarea v-model="convertForm.tags" class="form-control" rows="2" placeholder="多个标签用逗号分隔"></textarea>
+          </div>
+          <div class="form-group">
+            <label>附件</label>
+            <input
+              ref="convertFileInputRef"
+              type="file"
+              multiple
+              accept="image/*,video/*,application/pdf"
+              class="form-control file-input"
+              @change="onConvertFilesChange"
+            />
+            <p class="form-hint">支持图片、视频、PDF，单个不超过 50MB，最多 10 个</p>
+          </div>
         </div>
         <div class="modal-actions">
           <button class="btn-cancel" @click="closeModals">取消</button>
-          <button class="btn-confirm btn-warning" @click="submitConvertKb">确认转换</button>
+          <button class="btn-confirm btn-warning" @click="submitConvertKb" :disabled="!convertForm.solutionText?.trim()">确认转换</button>
         </div>
       </div>
     </div>
@@ -236,7 +267,8 @@ interface TicketDetailDto {
   finalSolutionSummary?: string
   sessionId?: string
   triggerMessageId?: string
-  meta?: { extra?: { contactPhone?: string } }
+  deviceMn?: string
+  meta?: { issueCategory?: string; alarmCode?: string; extra?: { contactPhone?: string } }
   metaJson?: string
 }
 
@@ -259,6 +291,11 @@ const showStartModal = ref(false)
 const showResolveModal = ref(false)
 const showCloseModal = ref(false)
 const showConvertKbModal = ref(false)
+
+// 转为知识库表单（可编辑，与知识条目结构一致）
+const convertForm = ref({ title: '', questionText: '', causeText: '', solutionText: '', scopeJson: '', tags: '' })
+const convertFiles = ref<File[]>([])
+const convertFileInputRef = ref<HTMLInputElement | null>(null)
 
 // 表单数据
 const assigneeName = ref('')
@@ -427,11 +464,76 @@ async function submitClose() {
   }
 }
 
+function openConvertKbModal() {
+  const t = ticket.value
+  if (!t) return
+  const meta = t.meta as { issueCategory?: string; alarmCode?: string } | undefined
+  const ic = meta?.issueCategory ?? ''
+  const ac = meta?.alarmCode ?? ''
+  const defaultTitle =
+    ic || ac ? `[${t.ticketNo}] ${ic} - ${ac} - ${t.title}`.replace(/\s*-\s*$/, '').trim() : `[${t.ticketNo}] ${t.title}`
+  const defaultCause =
+    ic || ac ? `根据 AI 智能客服判断，问题分类为：${ic}${ac ? `\n报警代码：${ac}` : ''}` : '详见最终解决方案'
+  const defaultScope = t.deviceMn ? JSON.stringify({ device_mn: t.deviceMn }, null, 2) : ''
+  convertForm.value = {
+    title: defaultTitle,
+    questionText: t.description || '无详细描述',
+    causeText: defaultCause,
+    solutionText: t.finalSolutionSummary || '',
+    scopeJson: defaultScope,
+    tags: `工单，${t.ticketNo}，${ic || '未分类'}`
+  }
+  convertFiles.value = []
+  showConvertKbModal.value = true
+}
+
+function onConvertFilesChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const files = input?.files
+  if (!files) return
+  const arr = Array.from(files).slice(0, 10)
+  const valid = arr.filter((f) => {
+    const okType = f.type.startsWith('image/') || f.type.startsWith('video/') || f.type === 'application/pdf'
+    const okSize = f.size / 1024 / 1024 < 50
+    return okType && okSize
+  })
+  convertFiles.value = valid
+}
+
 async function submitConvertKb() {
+  if (!convertForm.value.solutionText?.trim()) {
+    alert('请填写解决方案')
+    return
+  }
   try {
     const id = route.params.id as string
-    const response = await api.post(`admin/tickets/${id}/convert-to-kb`, { triggerVectorIndex: true })
-    const data = response.data as { message?: string; vectorSuccess?: boolean; vectorMessage?: string }
+    const response = await api.post(`admin/tickets/${id}/convert-to-kb`, {
+      triggerVectorIndex: true,
+      title: convertForm.value.title.trim() || undefined,
+      questionText: convertForm.value.questionText.trim() || undefined,
+      causeText: convertForm.value.causeText.trim() || undefined,
+      solutionText: convertForm.value.solutionText.trim(),
+      scopeJson: convertForm.value.scopeJson.trim() || undefined,
+      tags: convertForm.value.tags.trim() || undefined
+    })
+    const data = response.data as { message?: string; articleId?: number; vectorSuccess?: boolean; vectorMessage?: string }
+    const articleId = data.articleId
+    if (articleId != null && convertFiles.value.length > 0) {
+      for (const file of convertFiles.value) {
+        try {
+          const fd = new FormData()
+          fd.append('knowledgeItemId', String(articleId))
+          fd.append('file', file)
+          await api.post('attachments/upload', fd, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          })
+          convertFiles.value = []
+        } catch (upErr: unknown) {
+          console.error('附件上传失败:', file.name, upErr)
+          alert(`附件 ${file.name} 上传失败`)
+        }
+      }
+    }
     const msg = data.vectorSuccess
       ? `${data.message || '已成功转为知识库文章'}\n向量入库：${data.vectorMessage || '成功'}`
       : `${data.message || '已转为知识库文章'}\n向量入库：${data.vectorMessage || '失败'}`
@@ -791,6 +893,56 @@ function goBack() {
 
 .modal-info strong {
   color: #333;
+}
+
+.modal-convert {
+  max-width: 560px;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+.convert-form .form-group {
+  margin-bottom: 16px;
+}
+
+.convert-form .form-group label {
+  display: block;
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 6px;
+}
+
+.convert-form .form-group .required {
+  color: #f56c6c;
+}
+
+.convert-form .form-control {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.convert-form .form-control:focus {
+  outline: none;
+  border-color: #1890ff;
+}
+
+.convert-form textarea.form-control {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.convert-form .form-hint {
+  font-size: 12px;
+  color: #888;
+  margin-top: 6px;
+}
+
+.convert-form .file-input {
+  padding: 6px;
 }
 
 .modal-form label {

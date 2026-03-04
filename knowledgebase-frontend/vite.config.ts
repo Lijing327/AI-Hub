@@ -26,6 +26,12 @@ export default defineConfig(({ command, mode }) => ({
         changeOrigin: true,
         secure: false
       },
+      // 测试环境可能使用 uploads_test 路径
+      '/uploads_test': {
+        target: 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false
+      },
       '/python-api': {
         target: 'http://localhost:8000',
         changeOrigin: true,

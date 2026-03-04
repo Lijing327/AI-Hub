@@ -1,7 +1,17 @@
 <template>
   <div class="message-bubble" :class="message.role">
     <div class="message-content">
-      <div class="message-text">{{ message.content }}</div>
+      <div v-if="message.content && message.content !== '[图片]'" class="message-text">{{ message.content }}</div>
+      <div v-if="message.attachments && message.attachments.length > 0" class="message-attachments">
+        <img
+          v-for="(url, i) in message.attachments"
+          :key="i"
+          :src="url"
+          alt="附件"
+          class="attachment-img"
+          loading="lazy"
+        />
+      </div>
       <div class="message-time">{{ formatTime(message.createdAt) }}</div>
     </div>
   </div>
@@ -74,6 +84,25 @@ function formatTime(timeStr: string): string {
   font-size: 15px;
   line-height: 1.5;
   margin-bottom: 4px;
+}
+
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.attachment-img {
+  max-width: 200px;
+  max-height: 200px;
+  object-fit: contain;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.attachment-img:hover {
+  opacity: 0.9;
 }
 
 .message-time {

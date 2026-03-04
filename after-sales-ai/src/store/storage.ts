@@ -4,7 +4,7 @@
 
 const STORAGE_PREFIX = 'after_ai_v1'
 const VERSION_KEY = `${STORAGE_PREFIX}_version`
-const CURRENT_VERSION = '1.0.0'
+const CURRENT_VERSION = '1.0.1'
 
 // 存储键名
 const KEYS = {

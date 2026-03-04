@@ -228,13 +228,12 @@ public class AdminTicketsController : BaseController
         {
             var userId = GetUserId();
             var tenantId = GetTenantId();
-            var triggerVectorIndex = request?.TriggerVectorIndex ?? true;
 
-            _logger.LogInformation("转知识库 - TicketId: {TicketId}, UserId: {UserId}, TriggerVector: {Trigger}",
-                id, userId, triggerVectorIndex);
+            _logger.LogInformation("转知识库 - TicketId: {TicketId}, UserId: {UserId}",
+                id, userId);
 
             var result = await _ticketService.ConvertToKbAsync(
-                id, userId, tenantId, triggerVectorIndex);
+                id, request, userId, tenantId);
 
             return Ok(new
             {

@@ -57,5 +57,5 @@ public interface ITicketService
     /// <summary>
     /// 将工单转换为知识库文章
     /// </summary>
-    Task<(int articleId, string message, bool vectorSuccess)> ConvertToKbAsync(Guid ticketId, string userId, string tenantId, bool triggerVectorIndex = true);
+    Task<(int articleId, string message, bool vectorSuccess)> ConvertToKbAsync(Guid ticketId, ConvertToKbRequest? request, string userId, string tenantId);
 }

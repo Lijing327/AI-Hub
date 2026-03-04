@@ -104,9 +104,22 @@ export const ticketApi = {
   addLog: (id: string, data: { content: string; operatorName?: string }) =>
     api.post(`admin/tickets/${id}/logs`, data),
 
-  convertToKb: (id: string, data?: { triggerVectorIndex?: boolean }) =>
-    api.post<{ message: string; articleId?: number; vectorSuccess?: boolean; vectorMessage?: string }>(
-      `admin/tickets/${id}/convert-to-kb`,
-      data ?? { triggerVectorIndex: true }
-    ).then((r) => r.data)
+  convertToKb: (
+    id: string,
+    data?: {
+      triggerVectorIndex?: boolean
+      title?: string
+      questionText?: string
+      causeText?: string
+      solutionText?: string
+      scopeJson?: string
+      tags?: string
+    }
+  ) =>
+    api
+      .post<{ message: string; articleId?: number; vectorSuccess?: boolean; vectorMessage?: string }>(
+        `admin/tickets/${id}/convert-to-kb`,
+        { triggerVectorIndex: true, ...data }
+      )
+      .then((r) => r.data)
 }

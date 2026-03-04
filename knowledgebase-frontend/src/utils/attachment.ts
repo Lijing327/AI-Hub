@@ -9,13 +9,16 @@ import { apiConfig } from '../config/api'
 export function getAttachmentDisplayUrl(fileUrl: string | undefined): string {
   if (!fileUrl) return ''
 
-  // 开发环境：localhost:5000 转为相对路径走代理
+  // 开发环境：localhost:5000 转为相对路径走代理（支持 /uploads 和 /uploads_test）
   if (import.meta.env.DEV) {
     if (fileUrl.startsWith('http://localhost:5000/')) {
       return fileUrl.replace('http://localhost:5000', '')
     }
     if (fileUrl.startsWith('http://localhost:5000')) {
       return fileUrl.replace('http://localhost:5000', '')
+    }
+    if (fileUrl.startsWith('http://127.0.0.1:5000/')) {
+      return fileUrl.replace('http://127.0.0.1:5000', '')
     }
   }
 
