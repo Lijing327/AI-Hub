@@ -213,7 +213,6 @@ const convertForm = ref({
 
 /** 转为知识库时选择的附件（转换成功后上传） */
 const convertFileList = ref<{ uid: string; name: string; raw?: File }[]>([])
-const convertUploadRef = ref()
 
 const ticketId = computed(() => (props.id ?? route.params.id) as string)
 
