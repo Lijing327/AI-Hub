@@ -60,6 +60,7 @@ builder.Services.AddScoped<IIndexService, IndexService>();
 builder.Services.AddScoped<IKnowledgeArticleService, KnowledgeArticleService>();
 builder.Services.AddScoped<IAssetService, AssetService>();
 builder.Services.AddScoped<ITicketService, TicketService>();
+builder.Services.AddScoped<IAiAuditService, AiAuditService>();
 
 // 配置JWT设置
 var jwtSettings = builder.Configuration.GetSection(JwtSettings.SectionName).Get<JwtSettings>();

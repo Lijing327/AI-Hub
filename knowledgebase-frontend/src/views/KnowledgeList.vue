@@ -47,8 +47,14 @@
         </el-form-item>
       </el-form>
 
-      <!-- 表格 -->
-      <el-table :data="tableData" v-loading="loading" stripe>
+      <!-- 表格：点击行进入详情，操作列按钮需 @click.stop 阻止冒泡 -->
+      <el-table
+        :data="tableData"
+        v-loading="loading"
+        stripe
+        class="clickable-table"
+        @row-click="handleRowClick"
+      >
         <el-table-column prop="id" label="ID" width="80" />
         <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
         <el-table-column prop="status" label="状态" width="100">
@@ -67,7 +73,8 @@
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="handleDetail(row.id)">详情</el-button>
+            <span @click.stop>
+              <el-button link type="primary" @click="handleDetail(row.id)">详情</el-button>
             <el-button link type="primary" @click="handleEdit(row.id)">编辑</el-button>
             <el-button
               link
@@ -78,6 +85,7 @@
               发布
             </el-button>
             <el-button link type="danger" @click="handleDelete(row.id)">删除</el-button>
+            </span>
           </template>
         </el-table-column>
       </el-table>
@@ -240,6 +248,11 @@ const handleCreate = () => {
 
 const handleDetail = (id: number) => {
   router.push(`/knowledge/detail/${id}`)
+}
+
+// 点击行进入详情（操作列已用 @click.stop 阻止冒泡）
+const handleRowClick = (row: KnowledgeItemDto) => {
+  handleDetail(row.id)
 }
 
 const handleEdit = (id: number) => {
@@ -436,5 +449,10 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+/* 行可点击，悬停时显示手型 */
+.clickable-table :deep(.el-table__body tr) {
+  cursor: pointer;
 }
 </style>
