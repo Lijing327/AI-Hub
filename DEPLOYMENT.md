@@ -196,6 +196,7 @@ server {
     ssl_certificate_key /path/to/key.pem;
 
     # .NET 后端 API（必须，否则 /api/auth/login 等会 404）
+    # 若 .NET 在 6713 端口，改为 proxy_pass http://127.0.0.1:6713 或 http://实际地址:6713
     location /api/ {
         proxy_pass http://127.0.0.1:5000;
         proxy_set_header Host $host;
@@ -262,7 +263,20 @@ server {
 1. `appsettings.Production.json` → `AttachmentStorage.BasePath`
 2. `.env` (Python) → `ATTACHMENT_BASE_PATH`
 
-## 七、健康检查
+## 七、部署后请求仍发往 4013 且 404 的排查
+
+**现象**：前端部署后，Network 显示请求 `https://域名:4013/api/...` 返回 404。
+
+**原因**：前端使用相对路径 `/api`，请求会发往当前页面的域名和端口（4013）。404 说明 Nginx 的 `/api/` 代理未生效或后端未启动。
+
+**解决**：
+1. **确认 Nginx 已配置** `location /api/` 并正确 `proxy_pass` 到 .NET 实际监听地址（5000 或 6713）
+2. **确认 .NET 服务已启动**，在服务器上执行 `curl http://127.0.0.1:5000/api/auth/me` 或对应端口验证
+3. **若 .NET 在 6713**：将 Nginx 的 `proxy_pass` 改为 `http://127.0.0.1:6713`（或实际地址）
+
+**可选**：若希望前端直连 6713（不经过 4013 代理），需在构建时设置 `VITE_API_BASE=https://域名:6713` 并确保从 `knowledgebase-frontend` 目录执行 `npm run build`。
+
+## 八、健康检查
 
 | 服务 | URL | 预期 |
 |------|-----|------|
@@ -271,7 +285,7 @@ server {
 | Python | https://www.yonghongjituan.com:4013/python-api/health | `{"status":"ok"}` |
 | 审计自检（排查域名无记录） | https://www.yonghongjituan.com:4013/python-api/audit-status | `audit_enabled`、`dotnet_reachable` 等 |
 
-## 八、进程管理（建议使用 systemd）
+## 九、进程管理（建议使用 systemd）
 
 ### .NET 服务
 
@@ -319,7 +333,7 @@ systemctl enable ai-hub-dotnet ai-hub-python
 systemctl start ai-hub-dotnet ai-hub-python
 ```
 
-## 九、常见问题
+## 十、常见问题
 
 | 问题 | 原因 | 解决 |
 |------|------|------|
@@ -328,6 +342,6 @@ systemctl start ai-hub-dotnet ai-hub-python
 | Python 调用 .NET 返回 401 | Token 不一致 | 确保两边 InternalToken 相同 |
 | Excel 导入失败 | ODBC 驱动未安装 | 安装 ODBC Driver 17 for SQL Server |
 
-## 十、联系方式
+## 十一、联系方式
 
 如有问题，请联系开发人员。

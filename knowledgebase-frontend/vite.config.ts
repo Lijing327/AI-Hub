@@ -4,11 +4,14 @@ import { resolve } from 'path'
 
 // https://vitejs.dev/config/
 export default defineConfig(({ command, mode }) => {
-  // 构建时打印 API 配置，便于排查部署后请求地址错误
-  const env = loadEnv(mode, process.cwd(), '')
+  // 使用项目根目录加载 .env，避免从 workspace 根目录加载导致 .env.production 未生效
+  const envDir = resolve(__dirname)
+  const env = loadEnv(mode, envDir, '')
+  const apiBase = env.VITE_API_BASE ?? ''
+  const pythonBase = env.VITE_PYTHON_BASE ?? ''
+
   if (command === 'build') {
-    const apiBase = env.VITE_API_BASE ?? '(空，将使用相对路径 /api)'
-    console.log(`[Vite Build] VITE_API_BASE = ${apiBase}`)
+    console.log(`[Vite Build] VITE_API_BASE = ${apiBase || '(空，将使用相对路径 /api)'}`)
   }
   // devprod 模式：代理转发到生产后端；否则转发到本地
   const isDevProd = mode === 'devprod'
@@ -20,6 +23,7 @@ export default defineConfig(({ command, mode }) => {
 
   return {
     plugins: [vue()],
+    envDir: envDir,
     // 生产环境部署在 /learning 子路径下
     base: command === 'build' ? '/learning/' : '/',
     resolve: {
