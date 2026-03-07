@@ -84,6 +84,12 @@
 
     <!-- 底部输入区 -->
     <div class="chat-input-area">
+      <!-- 录音状态提示条：手机上更明显的反馈 -->
+      <div v-if="isRecording" class="recording-banner">
+        <span class="recording-dot"></span>
+        <span class="recording-text">正在录音，请说话</span>
+        <span class="recording-hint">点击麦克风结束</span>
+      </div>
       <!-- 待发送图片预览 -->
       <div v-if="pendingImages.length > 0" class="pending-images">
         <div v-for="(img, idx) in pendingImages" :key="idx" class="pending-img-wrap">
@@ -270,6 +276,8 @@ const fileInputRef = ref<HTMLInputElement | null>(null)
 const inputFieldRef = ref<HTMLInputElement | null>(null)
 /** 语音识别是否正在录音 */
 const isRecording = ref(false)
+/** 开始录音时的输入框内容，用于追加语音识别结果 */
+const voiceInputPrefix = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
 const isLoading = ref(false)
 const errorMessage = ref<string | null>(null)
@@ -540,7 +548,8 @@ function toggleVoiceInput() {
   if (isLoading.value) return
   const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
   if (!SpeechRecognition) {
-    showToast('您的浏览器不支持语音输入，请使用 Chrome 或 Edge')
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent)
+    showToast(isIOS ? 'iOS 请使用 Safari 14.5+ 或 Chrome 浏览器' : '您的浏览器不支持语音输入，请使用 Chrome 或 Edge')
     return
   }
   // 非 localhost 需 HTTPS，否则语音识别可能失败
@@ -553,17 +562,26 @@ function toggleVoiceInput() {
     isRecording.value = false
     return
   }
+  voiceInputPrefix.value = inputText.value
   voiceRecognition = new SpeechRecognition()
   voiceRecognition.lang = 'zh-CN'
   voiceRecognition.continuous = true
   voiceRecognition.interimResults = true
   voiceRecognition.onresult = (event: any) => {
     let finalText = ''
-    for (let i = event.resultIndex; i < event.results.length; i++) {
+    let interimText = ''
+    for (let i = 0; i < event.results.length; i++) {
       const result = event.results[i]
-      if (result.isFinal) finalText += result[0].transcript
+      const transcript = result[0]?.transcript || ''
+      if (result.isFinal) {
+        finalText += transcript
+        interimText = ''
+      } else {
+        interimText += transcript
+      }
     }
-    if (finalText) inputText.value = (inputText.value + finalText).trim()
+    // 实时显示识别结果（含临时），手机上能看到输入反馈
+    inputText.value = (voiceInputPrefix.value + finalText + interimText).trim()
   }
   voiceRecognition.onerror = (event: any) => {
     const tip = getVoiceErrorTip(event.error || '')
@@ -572,9 +590,11 @@ function toggleVoiceInput() {
   }
   voiceRecognition.onend = () => {
     isRecording.value = false
+    voiceInputPrefix.value = ''
   }
   voiceRecognition.start()
   isRecording.value = true
+  showToast('开始录音，请说话...')
 }
 
 async function sendMessage() {
@@ -1233,6 +1253,47 @@ watch(messages, () => {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
+/* 录音状态提示条：手机上更明显的反馈 */
+.recording-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: linear-gradient(135deg, #ffebee 0%, #ffcdd2 100%);
+  border-top: 1px solid #ef9a9a;
+  color: #c62828;
+  flex-wrap: wrap;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #f56c6c;
+  animation: pulse-recording 1s ease-in-out infinite;
+}
+
+.recording-text {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.recording-hint {
+  font-size: 12px;
+  color: #b71c1c;
+  opacity: 0.9;
+  margin-left: auto;
+}
+
+@media (max-width: 360px) {
+  .recording-hint {
+    width: 100%;
+    margin-left: 0;
+    margin-top: 4px;
+  }
+}
+
 .pending-images {
   display: flex;
   gap: 8px;
@@ -1478,23 +1539,27 @@ watch(messages, () => {
 
 .toast-message {
   position: fixed;
-  bottom: 100px;
+  /* 手机端：居中显示，避免被键盘或输入区遮挡 */
+  top: 50%;
   left: 50%;
-  transform: translateX(-50%) translateY(20px);
-  background: rgba(0, 0, 0, 0.8);
+  transform: translate(-50%, -50%) translateY(20px);
+  background: rgba(0, 0, 0, 0.85);
   color: #fff;
-  padding: 12px 24px;
-  border-radius: 8px;
-  font-size: 14px;
+  padding: 14px 28px;
+  border-radius: 10px;
+  font-size: 15px;
   z-index: 10000;
   opacity: 0;
   transition: all 0.3s;
   pointer-events: none;
+  max-width: 90%;
+  text-align: center;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
 }
 
 .toast-message.show {
   opacity: 1;
-  transform: translateX(-50%) translateY(0);
+  transform: translate(-50%, -50%) translateY(0);
 }
 
 /* 模态框覆盖层 */
