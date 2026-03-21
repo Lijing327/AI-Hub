@@ -88,4 +88,7 @@ def _reconstruct_id(meta: dict) -> str:
     t = meta.get("tenant_id") or "default"
     aid = meta.get("article_id") or 0
     typ = meta.get("type") or "q"
+    device_type = meta.get("device_type_code")
+    if device_type:
+        return f"{t}:kb:{aid}:{typ}:{device_type}"
     return f"{t}:kb:{aid}:{typ}"

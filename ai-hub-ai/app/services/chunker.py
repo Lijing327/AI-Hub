@@ -1,7 +1,13 @@
 """拆分策略（q/c/t）：输出可供 embedding 的条目"""
+import json
 from app.schemas.kb_article import KbArticle
 from app.utils.text import clean_text, truncate
 from app.utils.ids import make_vector_id
+from app.utils.device_type_utils import (
+    parse_device_types_from_scope,
+    format_device_types_for_display,
+    extract_device_type_from_text,
+)
 
 
 def build_chunks(article: KbArticle) -> list[dict]:
@@ -9,7 +15,7 @@ def build_chunks(article: KbArticle) -> list[dict]:
     返回：
     [
       {"id": "...:q", "doc": "...", "metadata": {...}},
-      {"id": "...:c", "doc": "...", "metadata": {...}},
+      {"id": "...:q", "doc": "...", "metadata": {...}},  # 多设备类型会生成多个
       ...
     ]
     """
@@ -20,55 +26,106 @@ def build_chunks(article: KbArticle) -> list[dict]:
     q = clean_text(article.question_text)
     c = clean_text(article.cause_text)
 
+    # 解析设备类型
+    device_type_codes = parse_device_types_from_scope(article.scope_json)
+    is_common = len(device_type_codes) == 1 and device_type_codes[0] == "COMMON"
+
+    # 如果没有设备类型信息，尝试从标题推断
+    if device_type_codes == ["COMMON"] and article.title:
+        inferred_type = extract_device_type_from_text(article.title)
+        if inferred_type:
+            device_type_codes = [inferred_type]
+            is_common = False
+
     items: list[dict] = []
 
-    # 向量A：问题
-    if q:
-        doc_q = truncate(f"【标题】{title}\n【问题】{q}")
-        items.append({
-            "id": make_vector_id(tenant_id, aid, "q"),
-            "doc": doc_q,
-            "metadata": {
-                "tenant_id": tenant_id,
-                "article_id": aid,
-                "type": "q",
-                "status": article.status,
-                "version": article.version,
-                "tags": article.tags,
-            }
-        })
+    # 生成设备类型文本前缀
+    def _make_prefix(device_type_code: str) -> str:
+        device_name = format_device_types_for_display([device_type_code])
 
-    # 向量B：原因
-    if c:
-        doc_c = truncate(f"【标题】{title}\n【原因】{c}")
-        items.append({
-            "id": make_vector_id(tenant_id, aid, "c"),
-            "doc": doc_c,
-            "metadata": {
-                "tenant_id": tenant_id,
-                "article_id": aid,
-                "type": "c",
-                "status": article.status,
-                "version": article.version,
-                "tags": article.tags,
-            }
-        })
+        # 从 scope_json 中提取设备型号
+        device_model = ""
+        if article.scope_json:
+            try:
+                scope_data = json.loads(article.scope_json)
+                device_model = scope_data.get("设备型号", "")
+            except:
+                pass
 
-    # 可选兜底：title + question
-    if title and q:
-        doc_t = truncate(f"{title}。{q}")
-        items.append({
-            "id": make_vector_id(tenant_id, aid, "t"),
-            "doc": doc_t,
-            "metadata": {
-                "tenant_id": tenant_id,
-                "article_id": aid,
-                "type": "t",
-                "status": article.status,
-                "version": article.version,
-                "tags": article.tags,
-            }
-        })
+        prefix_parts = []
+        if not is_common:
+            prefix_parts.append(f"[设备类型:{device_name}]")
+        if device_model:
+            prefix_parts.append(f"[设备型号:{device_model}]")
+
+        prefix = " ".join(prefix_parts) + "\n" if prefix_parts else ""
+
+        # 构建增强的 chunk 文本
+        chunk_parts = []
+        if title:
+            chunk_parts.append(f"标题：{title}")
+        if q:
+            chunk_parts.append(f"问题：{q}")
+        if c:
+            chunk_parts.append(f"原因：{c}")
+
+        return prefix + "\n".join(chunk_parts)
+
+    # 为每个设备类型创建 chunk
+    for device_type_code in device_type_codes:
+        # 向量A：问题
+        if q:
+            doc_q = truncate(_make_prefix(device_type_code) + f"【问题】{q}")
+            items.append({
+                "id": make_vector_id(tenant_id, aid, "q", device_type_code),
+                "doc": doc_q,
+                "metadata": {
+                    "tenant_id": tenant_id,
+                    "article_id": aid,
+                    "type": "q",
+                    "status": article.status,
+                    "version": article.version,
+                    "tags": article.tags,
+                    "device_type_code": device_type_code,
+                    "is_common": is_common,
+                }
+            })
+
+        # 向量B：原因
+        if c:
+            doc_c = truncate(_make_prefix(device_type_code) + f"【原因】{c}")
+            items.append({
+                "id": make_vector_id(tenant_id, aid, "c", device_type_code),
+                "doc": doc_c,
+                "metadata": {
+                    "tenant_id": tenant_id,
+                    "article_id": aid,
+                    "type": "c",
+                    "status": article.status,
+                    "version": article.version,
+                    "tags": article.tags,
+                    "device_type_code": device_type_code,
+                    "is_common": is_common,
+                }
+            })
+
+        # 可选兜底：title + question
+        if title and q:
+            doc_t = truncate(_make_prefix(device_type_code) + f"{title}。{q}")
+            items.append({
+                "id": make_vector_id(tenant_id, aid, "t", device_type_code),
+                "doc": doc_t,
+                "metadata": {
+                    "tenant_id": tenant_id,
+                    "article_id": aid,
+                    "type": "t",
+                    "status": article.status,
+                    "version": article.version,
+                    "tags": article.tags,
+                    "device_type_code": device_type_code,
+                    "is_common": is_common,
+                }
+            })
 
     return items
 

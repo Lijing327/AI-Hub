@@ -14,6 +14,7 @@ from app.clients.dotnet_client import DotnetClient
 from app.schemas.excel import ExcelImportResponse
 from app.services.attachment_service import AttachmentService
 from app.services.excel_utils import map_excel_row_to_article
+from app.utils.device_type_utils import scope_label_for_excel_import
 
 logger = get_logger(__name__)
 
@@ -29,13 +30,24 @@ class ExcelImportService:
         self.dotnet_client = dotnet_client or DotnetClient()
         self.attachment_service = attachment_service or AttachmentService()
 
-    async def import_excel(self, file_content: bytes, filename: str) -> ExcelImportResponse:
+    async def import_excel(
+        self,
+        file_content: bytes,
+        filename: str,
+        device_type: Optional[str] = None,
+    ) -> ExcelImportResponse:
         """
         导入 Excel 为知识条目
         - 校验 .xlsx、解析表头与行
         - 每行映射为一条知识草稿（含 _attachment_info）
         - 调用 .NET 批量创建文章，再批量创建附件
+        - device_type：可选，造型机/浇注机/抛丸机/通用或标准码；写入每条 scope_json 的「设备类型」
         """
+        try:
+            import_scope_label = scope_label_for_excel_import(device_type)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
         if not filename or not filename.endswith(".xlsx"):
             raise HTTPException(status_code=400, detail="只支持 .xlsx 格式的 Excel 文件")
 
@@ -136,7 +148,12 @@ class ExcelImportService:
             excel_row_num = int(idx) + header_row + 2
             try:
                 article = map_excel_row_to_article(
-                    row, filename, sheet_name, excel_row_num, self.attachment_service,
+                    row,
+                    filename,
+                    sheet_name,
+                    excel_row_num,
+                    self.attachment_service,
+                    import_device_type_label=import_scope_label,
                 )
                 if article:
                     articles_with_attachments.append(article)

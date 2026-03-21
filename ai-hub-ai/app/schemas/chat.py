@@ -7,6 +7,8 @@ class ChatRequest(BaseModel):
     """聊天请求"""
     question: str
     device_id: Optional[str] = None
+    device_type_code: Optional[str] = None  # 设备类型标准码
+    device_model: Optional[str] = None  # 设备型号（预留）
     tenant_id: Optional[str] = None
     # 审计相关：会话 ID（首次不传则自动创建，后续消息带上）
     conversation_id: Optional[str] = None

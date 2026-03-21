@@ -1,7 +1,7 @@
 """Excel 导入接口"""
 import traceback
 from typing import Optional
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 
 from app.schemas.excel import ExcelImportResponse
 from app.services.excel_import_service import ExcelImportService
@@ -24,18 +24,24 @@ def get_excel_service() -> ExcelImportService:
 
 
 @router.post("/import/excel", response_model=ExcelImportResponse)
-async def import_excel(file: UploadFile = File(...)):
+async def import_excel(
+    file: UploadFile = File(...),
+    device_type: Optional[str] = Form(None),
+):
     """
     导入 Excel 文件为知识条目
     - 接收 .xlsx 文件
+    - 可选表单字段 device_type：造型机、浇注机、抛丸机、通用（或标准码），写入每条知识的适用范围
     - 每行映射为一条知识草稿
     - 调用 .NET 批量创建文章与附件
     """
-    logger.info("收到 Excel 导入请求: %s", file.filename or "")
+    logger.info("收到 Excel 导入请求: %s device_type=%s", file.filename or "", device_type)
     service = get_excel_service()
     try:
         contents = await file.read()
-        return await service.import_excel(contents, file.filename or "unknown.xlsx")
+        return await service.import_excel(
+            contents, file.filename or "unknown.xlsx", device_type=device_type
+        )
     except HTTPException:
         raise
     except Exception as e:

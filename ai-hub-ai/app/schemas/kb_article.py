@@ -10,6 +10,7 @@ class KbArticle(BaseModel):
     cause_text: str | None = None
     solution_text: str | None = None
     tags: str | None = None  # 你表里如果是 json/text，这里先用 str
+    scope_json: str | None = None  # 适用范围JSON，包含设备类型等信息
     status: str | None = None
     version: int | None = None
 

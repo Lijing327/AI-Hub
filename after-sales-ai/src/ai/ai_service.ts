@@ -43,6 +43,7 @@ export async function generateAIResponse(
   const chatResponse = await chatSearch({
     question: questionText,
     device_id: device.deviceId,
+    device_model: device.model?.trim() || undefined,
     conversation_id: conversationId,
     user_id: userId,
     channel: channel

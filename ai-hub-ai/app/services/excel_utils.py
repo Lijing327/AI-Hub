@@ -121,6 +121,7 @@ def map_excel_row_to_article(
     sheet_name: str,
     row_index: int,
     attachment_service: AttachmentService,
+    import_device_type_label: Optional[str] = None,
 ) -> Optional[dict]:
     """
     将 Excel 行映射为知识条目（含 _attachment_info、_has_attachment_reference）
@@ -192,12 +193,21 @@ def map_excel_row_to_article(
     if solution_text:
         solution_text = clean_bracketed_labels(solution_text)
 
-    scope_json = json.dumps(
-        {"设备系列": "YH400/YH500", "来源文件": source_file_name, "sheet": sheet_name, "行号": row_index},
-        ensure_ascii=False,
-    )
-    tags = ["YH400", "YH500"]
+    scope_data: dict = {
+        "来源文件": source_file_name,
+        "sheet": sheet_name,
+        "行号": row_index,
+    }
+    if import_device_type_label:
+        scope_data["设备类型"] = import_device_type_label
+    else:
+        scope_data["设备系列"] = "YH400/YH500"
+    scope_json = json.dumps(scope_data, ensure_ascii=False)
     stem = Path(source_file_name).stem
+    if import_device_type_label:
+        tags = [import_device_type_label]
+    else:
+        tags = ["YH400", "YH500"]
     if stem:
         tags.append(f"来源:{stem}")
     tags_str = ", ".join(tags)

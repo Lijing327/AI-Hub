@@ -53,7 +53,7 @@ class KbArticleRepository:
         """按 id 取单条"""
         sql = """
         SELECT
-            id, tenant_id, title, question_text, cause_text, solution_text, tags, status, version
+            id, tenant_id, title, question_text, cause_text, solution_text, tags, scope_json, status, version
         FROM dbo.kb_article
         WHERE id = ? AND deleted_at IS NULL
         """
@@ -119,13 +119,13 @@ def get_article(article_id: int, tenant_id: Optional[str] = None) -> Optional[Kb
     """按 id 取单条，可选按 tenant_id 过滤"""
     if tenant_id:
         rows = execute_query(
-            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, status, version "
+            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, scope_json, status, version "
             "FROM kb_article WHERE id = ? AND tenant_id = ? AND deleted_at IS NULL",
             (article_id, tenant_id),
         )
     else:
         rows = execute_query(
-            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, status, version "
+            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, scope_json, status, version "
             "FROM kb_article WHERE id = ? AND deleted_at IS NULL",
             (article_id,),
         )
@@ -140,6 +140,7 @@ def get_article(article_id: int, tenant_id: Optional[str] = None) -> Optional[Kb
         cause_text=r.get("cause_text"),
         solution_text=r.get("solution_text"),
         tags=r.get("tags"),
+        scope_json=r.get("scope_json"),
         status=r.get("status") or 1,
         version=int(r.get("version") or 1),
     )
@@ -154,19 +155,19 @@ def list_articles(
     if ids:
         placeholders = ",".join("?" * len(ids))
         sql = (
-            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, status, version "
+            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, scope_json, status, version "
             "FROM kb_article WHERE tenant_id = ? AND id IN ({}) AND deleted_at IS NULL"
         ).format(placeholders)
         params: tuple = (tenant_id, *ids)
     elif updated_after:
         sql = (
-            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, status, version "
+            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, scope_json, status, version "
             "FROM kb_article WHERE tenant_id = ? AND (updated_at >= ? OR created_at >= ?) AND deleted_at IS NULL"
         )
         params = (tenant_id, updated_after, updated_after)
     else:
         sql = (
-            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, status, version "
+            "SELECT id, tenant_id, title, question_text, cause_text, solution_text, tags, scope_json, status, version "
             "FROM kb_article WHERE tenant_id = ? AND deleted_at IS NULL"
         )
         params = (tenant_id,)
@@ -180,6 +181,7 @@ def list_articles(
             cause_text=r.get("cause_text"),
             solution_text=r.get("solution_text"),
             tags=r.get("tags"),
+            scope_json=r.get("scope_json"),
             status=r.get("status") or 1,
             version=int(r.get("version") or 1),
         )

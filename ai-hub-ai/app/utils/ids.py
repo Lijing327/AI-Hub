@@ -1,11 +1,18 @@
-"""向量 id 生成规则：{tenant_id}:kb:{article_id}:q|c|t"""
-from typing import Literal
+"""向量 id 生成规则：{tenant_id}:kb:{article_id}:q|c|t[:device_type]"""
+from typing import Literal, Optional
 
 HitType = Literal["q", "c", "t"]
 
 
-def make_vector_id(tenant_id: str, article_id: int, typ: str) -> str:
-    """typ: q / c / t"""
+def make_vector_id(
+    tenant_id: str,
+    article_id: int,
+    typ: str,
+    device_type_code: Optional[str] = None
+) -> str:
+    """typ: q / c / t, 可选 device_type_code"""
+    if device_type_code:
+        return f"{tenant_id}:kb:{article_id}:{typ}:{device_type_code}"
     return f"{tenant_id}:kb:{article_id}:{typ}"
 
 

@@ -108,6 +108,10 @@ export async function getKnowledgeArticleById(
 export interface ChatRequest {
   question: string
   device_id?: string
+  /** 设备类型标准码（可选；一般传 device_model 由后端推断即可） */
+  device_type_code?: string
+  /** 当前选中设备的型号，用于多设备知识隔离检索 */
+  device_model?: string
   // 审计相关：会话 ID（首次不传则自动创建，后续消息带上）
   conversation_id?: string
   user_id?: string

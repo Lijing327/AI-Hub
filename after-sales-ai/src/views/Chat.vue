@@ -36,8 +36,9 @@
       <div v-if="messages.length === 0 && !isLoading" class="welcome-bubble">
         <div class="welcome-avatar">AI</div>
         <div class="welcome-text">
-          <p>您好，我是造型机技术资源库。</p>
-          <p>您可以描述设备现象、报警码或操作问题，我会帮您排查并给出步骤与方案。</p>
+          <p>{{ welcomeLine1 }}</p>
+          <p>{{ welcomeLine2 }}</p>
+          <p v-if="welcomeLine3" class="welcome-device-hint">{{ welcomeLine3 }}</p>
         </div>
       </div>
       <div v-for="message in messages" :key="message.messageId" class="message-wrapper">
@@ -235,7 +236,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import ChatMessageBubble from '@/components/ChatMessageBubble.vue'
 import AiAnswerCard from '@/components/AiAnswerCard.vue'
@@ -247,6 +248,7 @@ import { generateAIResponse, rewriteAttachmentUrlForDev } from '@/ai/ai_service'
 import { getArticleDetail } from '@/api/knowledge'
 import { getCurrentUser, changePassword as apiChangePassword, updateProfile as apiUpdateProfile } from '@/api/auth'
 import type { ChatMessage, Device, AIResponseMeta, RelatedArticle, TechnicalResource } from '@/models/types'
+import { deviceCategoryLabelFromModel, deviceModelForApiHint } from '@/utils/deviceKbLabel'
 
 /** 当前选中的「其他问题」详情（与首条「最有可能」并列展示用） */
 interface SelectedArticleDetail {
@@ -372,6 +374,33 @@ function getSelectedArticleDetail(messageId: string): SelectedArticleDetail | nu
 
 // 是否从欢迎页直接进入（未选设备，使用默认）
 const isDefaultDevice = ref(false)
+
+const welcomeLine1 = computed(() => {
+  if (isDefaultDevice.value) {
+    return '您好，我是智能客服助手。'
+  }
+  const cat = deviceCategoryLabelFromModel(device.value?.model)
+  return `您好，我是${cat}技术资源库。`
+})
+
+const welcomeLine2 = computed(() => {
+  if (isDefaultDevice.value) {
+    return '请点击左上方选择或切换设备，以便按机型匹配知识库后再提问。'
+  }
+  return '您可以描述设备现象、报警码或操作问题，我会帮您排查并给出步骤与方案。'
+})
+
+/** 与后端检索一致：发送问题时会在请求里带上 device_model */
+const welcomeLine3 = computed(() => {
+  if (isDefaultDevice.value || !device.value) {
+    return ''
+  }
+  const mn = deviceModelForApiHint(device.value.model)
+  if (!mn) {
+    return ''
+  }
+  return `提问时将向服务提交设备型号「${mn}」，知识检索会按该设备类型优先匹配（与顶部当前设备一致）。`
+})
 
 const toggleMenu = () => {
   isMenuOpen.value = !isMenuOpen.value;
@@ -869,6 +898,7 @@ async function handleSelectRelatedQuestion(messageId: string, article: RelatedAr
 function handleDeviceChange(newDevice: Device) {
   currentDeviceId.value = newDevice.deviceId
   device.value = newDevice
+  isDefaultDevice.value = false
   showDevicePicker.value = false
   // 重新创建会话
   createNewSession()
@@ -1202,6 +1232,12 @@ watch(messages, () => {
 .welcome-text p:last-child {
   margin-bottom: 0;
   color: #666;
+}
+
+.welcome-text p.welcome-device-hint {
+  font-size: 13px;
+  color: #888;
+  margin-top: 4px;
 }
 
 .message-wrapper {

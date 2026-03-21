@@ -2,8 +2,10 @@ using ai_hub_service.Data;
 using ai_hub_service.DTOs;
 using ai_hub_service.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
 namespace ai_hub_service.Services;
@@ -15,15 +17,21 @@ public class KnowledgeArticleService : IKnowledgeArticleService
 {
     private readonly ApplicationDbContext _context;
     private readonly IIndexService _indexService;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IConfiguration _configuration;
     private readonly ILogger<KnowledgeArticleService> _logger;
 
     public KnowledgeArticleService(
-        ApplicationDbContext context, 
+        ApplicationDbContext context,
         IIndexService indexService,
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration,
         ILogger<KnowledgeArticleService> logger)
     {
         _context = context;
         _indexService = indexService;
+        _httpClientFactory = httpClientFactory;
+        _configuration = configuration;
         _logger = logger;
     }
 
@@ -307,10 +315,50 @@ public class KnowledgeArticleService : IKnowledgeArticleService
 
         await _context.SaveChangesAsync();
 
-        // 调用向量化服务（占位）
+        // 调用向量化服务（占位，保留扩展点）
         await _indexService.UpsertEmbeddingsAsync(chunks.Select(c => c.ChunkText).ToList());
 
+        // 触发 Python 侧 Chroma 单条重建（失败不影响发布成功，与工单转知识库行为一致）
+        await TriggerAiHubVectorIngestAsync(id);
+
         return true;
+    }
+
+    /// <summary>
+    /// 调用 ai-hub-ai 的 ingest 接口，将已发布文章写入向量库（供智能客服 RAG）
+    /// </summary>
+    private async Task TriggerAiHubVectorIngestAsync(int articleId)
+    {
+        string? aiHubAiUrl = _configuration["AiHubAi:BaseUrl"];
+        if (string.IsNullOrWhiteSpace(aiHubAiUrl))
+        {
+            _logger.LogWarning("未配置 AiHubAi:BaseUrl，跳过向量入库：ArticleId={ArticleId}", articleId);
+            return;
+        }
+
+        string baseUrl = aiHubAiUrl.TrimEnd('/');
+        string ingestUrl = $"{baseUrl}/api/v1/ingest/article/{articleId}";
+
+        try
+        {
+            HttpClient httpClient = _httpClientFactory.CreateClient();
+            using HttpResponseMessage response = await httpClient.PostAsync(ingestUrl, null);
+            if (response.IsSuccessStatusCode)
+            {
+                _logger.LogInformation("向量入库成功：ArticleId={ArticleId}", articleId);
+            }
+            else
+            {
+                _logger.LogWarning(
+                    "向量入库失败：ArticleId={ArticleId} HttpStatus={Status}",
+                    articleId,
+                    (int)response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "触发向量入库异常：ArticleId={ArticleId}", articleId);
+        }
     }
 
     /// <summary>

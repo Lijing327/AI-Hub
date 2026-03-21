@@ -24,13 +24,14 @@ from app.services.attachment_service import (
     AttachmentService,
 )
 from app.services.intent_service import classify_intent, Intent
+from app.utils.device_type_utils import resolve_device_type_for_query
 
 logger = get_logger(__name__)
 
 # 知识库不可用或结果为空时，让 AI 扮演售后客服的系统提示
 # 强调：主动引导用户补充信息，而不是直接给建议
 AI_FALLBACK_SYSTEM = (
-    "你是造型机设备的售后技术支持助手。当用户的问题描述不够详细时，你需要主动、友好地引导用户补充关键信息。"
+    "你是铸造产线设备（造型机、浇注机、抛丸机等）的售后技术支持助手。当用户的问题描述不够详细时，你需要主动、友好地引导用户补充关键信息。"
     "\n\n引导方式："
     "1. 先简短理解用户的问题（如'我理解您的设备出现了故障'）"
     "2. 然后主动提问，逐步收集信息，例如："
@@ -45,7 +46,7 @@ AI_FALLBACK_SYSTEM = (
 
 # 身份/闲聊类问题直接走 AI 时用的系统提示（不查知识库）
 AI_CHITCHAT_SYSTEM = (
-    "你是造型机设备的售后技术支持助手。请用一两句话简短介绍自己的身份和能提供的帮助（如：设备故障、报警码、操作问题等）。"
+    "你是铸造产线设备（造型机、浇注机、抛丸机等）的售后技术支持助手。请用一两句话简短介绍自己的身份和能提供的帮助（如：设备故障、报警码、操作问题等）。"
     "回答控制在 150 字以内，语气友好专业。"
 )
 
@@ -774,10 +775,24 @@ class ChatService:
         if self._query_service and self._kb_repo:
             try:
                 logger.info("使用向量检索查询: %s", request.question)
+                logger.info(
+                    "设备过滤入参: device_type_code=%r device_model=%r",
+                    request.device_type_code,
+                    request.device_model,
+                )
+                effective_dt = resolve_device_type_for_query(
+                    request.device_type_code,
+                    request.device_model,
+                )
+                if effective_dt:
+                    logger.info("检索设备类型(解析结果): %s", effective_dt)
+                else:
+                    logger.info("检索设备类型: 未指定，不按设备类型过滤向量")
                 hits = self._query_service.query(
                     tenant_id=tenant_id,
                     query_text=request.question,
                     top_k=5,
+                    device_type_code=effective_dt,
                 )
                 if hits:
                     article_ids = [h["article_id"] for h in hits]

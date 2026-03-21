@@ -48,10 +48,24 @@ async def search_and_answer(
 ):
     """
     搜索知识库并生成AI回答
+
+    支持设备类型过滤：
+    - 传入 device_type_code 可按设备类型过滤知识库检索
+    - 不传时保持原有逻辑，检索所有设备类型的知识
+
     支持审计日志：
     - 传入 conversation_id 则加入现有会话
     - 不传则自动创建新会话
     - 响应中返回 conversation_id 和 message_id
+
+    示例请求：
+    {
+        "question": "设备无法射砂怎么办？",
+        "device_id": "YH500-001",
+        "device_type_code": "MOULDING_MACHINE",
+        "device_model": "YH500",
+        "tenant_id": "default"
+    }
     """
     start_time = time.time()
     audit = get_audit_client()

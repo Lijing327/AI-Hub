@@ -3,10 +3,22 @@
 - 创建 FastAPI 实例
 - 加载配置、初始化日志
 - 注册路由、中间件、全局异常处理
+
+直接运行本文件：python app/main.py（需在 ai-hub-ai 目录下，或任意目录下指定完整路径）
+推荐：在项目根目录执行 python main.py 或 uvicorn app.main:app --host 0.0.0.0 --port 8000
 """
+import sys
+from pathlib import Path
+
+# 使用 `python app/main.py` 时，脚本所在目录会被加入 sys.path，导致无法解析包名 `app.*`，需把项目根目录插到最前
+_project_root = Path(__file__).resolve().parent.parent
+if str(_project_root) not in sys.path:
+    sys.path.insert(0, str(_project_root))
+
 import asyncio
 import os
 import webbrowser
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -28,47 +40,9 @@ logger = get_logger(__name__)
 
 def create_app() -> FastAPI:
     """工厂：创建并配置 FastAPI 应用"""
-    app = FastAPI(
-        title=settings.APP_NAME or getattr(settings, "APP_TITLE", "AI Hub 服务"),
-        description=getattr(settings, "APP_DESCRIPTION", "处理 Excel 文件导入和智能客服问答"),
-        version=getattr(settings, "APP_VERSION", "1.0.0"),
-        docs_url="/docs",   # Swagger UI
-        redoc_url="/redoc",
-    )
 
-    # 全局异常处理
-    @app.exception_handler(AppException)
-    async def app_exception_handler(request: Request, exc: AppException):
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"detail": exc.detail or exc.message},
-        )
-
-    # 跨域：智能客服前端在 4013，请求本服务 6714 会跨域，必须允许
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=[
-            "https://www.yonghongjituan.com:4013",
-            "http://www.yonghongjituan.com:4013",
-            "http://localhost:3000",
-            "http://127.0.0.1:3000",
-        ],
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
-
-    # 中间件
-    app.add_middleware(RequestLogMiddleware)
-
-    # 注册 v1 路由：无前缀（智能客服 / 代理转发后为 /api/chat/search、/import/excel）+ 带 /python-api（知识库导入 4013 请求 /python-api/import/excel）
-    app.include_router(api_router)
-    app.include_router(api_router, prefix="/python-api")
-    # 意图分流聊天入口：POST /chat
-    app.include_router(chat_router)
-
-    @app.on_event("startup")
-    async def startup():
+    @asynccontextmanager
+    async def lifespan(_app: FastAPI):
         # 显示当前环境
         env = APP_ENV or "default"
         logger.info("============================================================")
@@ -129,8 +103,57 @@ def create_app() -> FastAPI:
 
             asyncio.create_task(_open_swagger())
 
+        yield
+
+    app = FastAPI(
+        title=settings.APP_NAME or getattr(settings, "APP_TITLE", "AI Hub 服务"),
+        description=getattr(settings, "APP_DESCRIPTION", "处理 Excel 文件导入和智能客服问答"),
+        version=getattr(settings, "APP_VERSION", "1.0.0"),
+        docs_url="/docs",   # Swagger UI
+        redoc_url="/redoc",
+        lifespan=lifespan,
+    )
+
+    # 全局异常处理
+    @app.exception_handler(AppException)
+    async def app_exception_handler(request: Request, exc: AppException):
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={"detail": exc.detail or exc.message},
+        )
+
+    # 跨域：智能客服前端在 4013，请求本服务 6714 会跨域，必须允许
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=[
+            "https://www.yonghongjituan.com:4013",
+            "http://www.yonghongjituan.com:4013",
+            "http://localhost:3000",
+            "http://127.0.0.1:3000",
+        ],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # 中间件
+    app.add_middleware(RequestLogMiddleware)
+
+    # 注册 v1 路由：无前缀（智能客服 / 代理转发后为 /api/chat/search、/import/excel）+ 带 /python-api（知识库导入 4013 请求 /python-api/import/excel）
+    app.include_router(api_router)
+    app.include_router(api_router, prefix="/python-api")
+    # 意图分流聊天入口：POST /chat
+    app.include_router(chat_router)
+
     return app
 
 
 # 供 uvicorn 等使用：app.main:app
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    _port = int(os.getenv("PORT", str(getattr(settings, "PORT", 8000))))
+    uvicorn.run(app, host="0.0.0.0", port=_port)

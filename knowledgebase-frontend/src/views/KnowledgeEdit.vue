@@ -57,6 +57,25 @@
           />
         </el-form-item>
 
+        <el-form-item label="设备类型">
+          <el-select
+            v-model="kbDeviceType"
+            placeholder="不选则不在适用范围中写「设备类型」（检索侧按通用处理）"
+            clearable
+            style="width: 360px"
+          >
+            <el-option
+              v-for="opt in KB_DEVICE_TYPE_OPTIONS"
+              :key="opt"
+              :label="opt"
+              :value="opt"
+            />
+          </el-select>
+          <div class="device-type-tip">
+            与智能客服「选设备再问」一致：选造型机/浇注机/抛丸机后，仅对应设备会话易命中本条；选「通用」则所有设备均可命中。
+          </div>
+        </el-form-item>
+
         <el-form-item label="适用范围" prop="scopeJson">
           <div class="scope-input">
             <div
@@ -147,7 +166,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed, watch } from 'vue'
+import { ref, reactive, onMounted, computed, watch, nextTick } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElUpload, type FormInstance, type FormRules } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
@@ -182,6 +201,16 @@ interface ScopeItem {
 
 const scopeItems = ref<ScopeItem[]>([{ key: '', value: '' }])
 
+/** 与向量检索 device_type 对齐的标准选项 */
+const KB_DEVICE_TYPE_OPTIONS = ['造型机', '浇注机', '抛丸机', '通用'] as const
+
+function isKbDeviceTypeOption(v: string): v is (typeof KB_DEVICE_TYPE_OPTIONS)[number] {
+  return (KB_DEVICE_TYPE_OPTIONS as readonly string[]).includes(v)
+}
+
+const kbDeviceType = ref<(typeof KB_DEVICE_TYPE_OPTIONS)[number] | ''>('')
+const syncingDeviceTypeFromScope = ref(false)
+
 // 将 scopeItems 转换为 JSON 字符串
 const updateScopeJson = () => {
   const scopeObj: Record<string, string> = {}
@@ -202,6 +231,16 @@ watch(
   { deep: true }
 )
 
+watch(kbDeviceType, (v) => {
+  if (syncingDeviceTypeFromScope.value) return
+  const rest = scopeItems.value.filter((i) => i.key.trim() !== '设备类型')
+  if (v) {
+    scopeItems.value = [{ key: '设备类型', value: v }, ...rest]
+  } else {
+    scopeItems.value = rest.length > 0 ? rest : [{ key: '', value: '' }]
+  }
+})
+
 // 添加适用范围字段
 const addScopeItem = () => {
   scopeItems.value.push({ key: '', value: '' })
@@ -218,6 +257,11 @@ const removeScopeItem = (index: number) => {
 const parseScopeJson = (jsonStr: string | null | undefined) => {
   if (!jsonStr || jsonStr.trim() === '') {
     scopeItems.value = [{ key: '', value: '' }]
+    syncingDeviceTypeFromScope.value = true
+    kbDeviceType.value = ''
+    nextTick(() => {
+      syncingDeviceTypeFromScope.value = false
+    })
     return
   }
 
@@ -234,6 +278,14 @@ const parseScopeJson = (jsonStr: string | null | undefined) => {
     // 如果解析失败，保持默认值
     scopeItems.value = [{ key: '', value: '' }]
   }
+
+  syncingDeviceTypeFromScope.value = true
+  const dt = scopeItems.value.find((i) => i.key.trim() === '设备类型')
+  const dv = dt?.value?.trim() ?? ''
+  kbDeviceType.value = isKbDeviceTypeOption(dv) ? dv : ''
+  nextTick(() => {
+    syncingDeviceTypeFromScope.value = false
+  })
 }
 
 // 标签列表（计算属性）
@@ -578,5 +630,13 @@ onMounted(() => {
   margin-top: 8px;
   font-size: 12px;
   color: #606266;
+}
+
+.device-type-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
+  max-width: 560px;
 }
 </style>

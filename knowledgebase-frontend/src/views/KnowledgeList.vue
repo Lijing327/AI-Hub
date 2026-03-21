@@ -111,6 +111,25 @@
       width="600px"
       :close-on-click-modal="false"
     >
+      <el-form label-width="100px" style="margin-bottom: 16px">
+        <el-form-item label="设备类型">
+          <el-select
+            v-model="importDeviceType"
+            placeholder="不指定（与旧版一致：不写设备类型，向量按通用处理）"
+            clearable
+            style="width: 100%"
+          >
+            <el-option label="造型机" value="造型机" />
+            <el-option label="浇注机" value="浇注机" />
+            <el-option label="抛丸机" value="抛丸机" />
+            <el-option label="通用" value="通用" />
+          </el-select>
+          <div class="import-device-tip">
+            导入前请选择本表知识所属设备类型，以便智能客服按当前设备检索；选「通用」则所有设备均可命中。
+          </div>
+        </el-form-item>
+      </el-form>
+
       <el-upload
         ref="uploadRef"
         :auto-upload="false"
@@ -128,7 +147,7 @@
           <div class="el-upload__tip">
             只能上传 .xlsx 格式的 Excel 文件
             <br />
-            Excel 文件需包含以下列：设备型号、故障现象（必需），报警信息、原因分析、处理方法（可选）
+            Excel 需包含「现象/问题」类列（与表头模板一致）；设备类型在上方下拉中选择，不必在表内再写一列。
           </div>
         </template>
       </el-upload>
@@ -320,6 +339,8 @@ const fileList = ref<UploadFile[]>([])
 const selectedFile = ref<File | null>(null)
 const importing = ref(false)
 const importResult = ref<any>(null)
+/** Excel 导入时写入 scope_json「设备类型」；空则保持旧版（仅设备系列等） */
+const importDeviceType = ref<string>('')
 
 const handleFileChange = (file: UploadFile) => {
   selectedFile.value = file.raw as File
@@ -343,6 +364,9 @@ const handleImport = async () => {
   try {
     const formData = new FormData()
     formData.append('file', selectedFile.value)
+    if (importDeviceType.value) {
+      formData.append('device_type', importDeviceType.value)
+    }
 
     const response = await fetch(`${apiConfig.pythonApiBaseUrl}/import/excel`, {
       method: 'POST',
@@ -376,6 +400,7 @@ const handleCancelImport = () => {
   fileList.value = []
   selectedFile.value = null
   importResult.value = null
+  importDeviceType.value = ''
   uploadRef.value?.clearFiles()
 }
 
@@ -449,6 +474,13 @@ onMounted(() => {
   margin-top: 20px;
   display: flex;
   justify-content: flex-end;
+}
+
+.import-device-tip {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #909399;
+  line-height: 1.5;
 }
 
 /* 行可点击，悬停时显示手型 */
