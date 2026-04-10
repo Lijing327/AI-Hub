@@ -27,6 +27,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false
       },
+      // 历史测试数据链接可能仍为 /uploads_test/，代理到同一后端，避免 404
+      '/uploads_test': {
+        target: process.env.VITE_DEV_API_TARGET || 'http://localhost:5000',
+        changeOrigin: true,
+        secure: false
+      },
       '/python-api': {
         target: process.env.VITE_DEV_PYTHON_TARGET || 'http://localhost:8000',
         changeOrigin: true,

@@ -14,7 +14,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 # =====================================================
 # True = 测试环境（使用 .env.test）
 # False = 生产环境（使用 .env.production）
-IS_TEST = True
+IS_TEST = False
 # =====================================================
 
 # 项目根目录：app/core/config.py -> app -> 项目根

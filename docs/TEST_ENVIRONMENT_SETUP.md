@@ -86,8 +86,8 @@ dotnet run --project ai-hub-service/ai-hub-service.csproj
     "DefaultConnection": "Server=localhost;Database=ai_hub_test;..."
   },
   "FileStorage": {
-    "LocalPath": "wwwroot/uploads_test",
-    "BaseUrl": "http://localhost:5000/uploads_test"
+    "LocalPath": "wwwroot/uploads",
+    "BaseUrl": "http://localhost:5000/uploads"
   }
 }
 ```

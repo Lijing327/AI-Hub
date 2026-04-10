@@ -90,6 +90,8 @@ def rewrite_attachment_url_to_remote(url: str) -> str:
         return url or ""
     from urllib.parse import unquote
     url = url.strip()
+    # 与正式环境一致：历史测试数据可能存 /uploads_test/，统一按 /uploads/ 解析
+    url = re.sub(r"(?i)/uploads_test(?=/|$)", "/uploads", url)
     # 判断是否为“本地/需重写”的 URL
     is_local = (
         "localhost" in url

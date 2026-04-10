@@ -62,7 +62,8 @@ export async function generateAIResponse(
 export function rewriteAttachmentUrlForDev(url: string): string {
   if (!url || typeof url !== 'string') return url || ''
   if (typeof window === 'undefined') return url
-  const u = url.trim()
+  // 测试库历史 URL 可能含 /uploads_test/，与正式环境对齐为 /uploads/
+  const u = url.trim().replace(/\/uploads_test(?=\/|$)/gi, '/uploads')
   if (u.startsWith('http://localhost:') || u.startsWith('http://127.0.0.1:')) {
     try {
       return u.replace(/^https?:\/\/[^/]+/, window.location.origin)

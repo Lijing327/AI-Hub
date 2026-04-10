@@ -7,6 +7,8 @@ import ConversationDetail from '../views/ConversationDetail.vue'
 import AuditStats from '../views/AuditStats.vue'
 import TicketList from '../views/TicketList.vue'
 import TicketDetail from '../views/TicketDetail.vue'
+import MallHome from '../views/MallHome.vue'
+import OrderHome from '../views/OrderHome.vue'
 
 const router = createRouter({
   // 使用 hash 模式，避免服务器配置问题
@@ -66,6 +68,18 @@ const router = createRouter({
       name: 'TicketDetail',
       component: TicketDetail,
       props: true
+    },
+    // 商城系统
+    {
+      path: '/mall',
+      name: 'MallHome',
+      component: MallHome
+    },
+    // 订单系统
+    {
+      path: '/order',
+      name: 'OrderHome',
+      component: OrderHome
     }
   ]
 })

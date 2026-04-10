@@ -13,7 +13,7 @@ using Microsoft.Extensions.FileProviders;
 var builder = WebApplication.CreateBuilder(args);
 
 // 环境开关：true=测试环境(ai_hub_test), false=生产环境(ai_hub)
-const bool IS_TEST = true;
+const bool IS_TEST = false;
 
 // 测试环境默认租户为 default_test（与 ai-hub-ai .env.test 一致，kb_article 数据多为该租户）
 if (IS_TEST)

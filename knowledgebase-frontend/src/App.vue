@@ -39,6 +39,26 @@
           >
             工单列表
           </el-button>
+          <el-divider direction="vertical" />
+          <span class="nav-group-label">商城系统</span>
+          <el-button
+            :type="currentRoute === '/mall' ? 'primary' : 'default'"
+            link
+            class="nav-btn"
+            @click="goTo('/mall')"
+          >
+            商城首页
+          </el-button>
+          <el-divider direction="vertical" />
+          <span class="nav-group-label">订单系统</span>
+          <el-button
+            :type="currentRoute === '/order' ? 'primary' : 'default'"
+            link
+            class="nav-btn"
+            @click="goTo('/order')"
+          >
+            订单首页
+          </el-button>
         </div>
       </div>
     </el-header>
@@ -62,6 +82,8 @@ const currentRoute = computed(() => {
   if (path.startsWith('/audit')) return '/audit'
   if (path.startsWith('/knowledge')) return '/knowledge'
   if (path.startsWith('/tickets')) return '/tickets'
+  if (path.startsWith('/mall')) return '/mall'
+  if (path.startsWith('/order')) return '/order'
   return path
 })
 
